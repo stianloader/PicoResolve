@@ -5,7 +5,7 @@ import java.util.Map;
 
 import de.geolykt.mavenresolver.misc.ConfusedResolverException;
 
-public final class PrereleaseVersionPart implements MavenVersionPart {
+final class PrereleaseVersionPart implements MavenVersionPart {
 
     private static final Map<String, Integer> QUALIFIER_VALUES = new HashMap<>();
     private int prefixCodepoint;

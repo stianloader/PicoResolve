@@ -14,11 +14,6 @@ public class MavenVersionTest {
     }
 
     @Test
-    public void testMavenVersionParseInterop() {
-        MavenVersion.testSplitTokens();
-    }
-
-    @Test
     public void testMavenPreferenceInterop() {
         // Based on examples provided by https://maven.apache.org/pom.html#Version_Order_Specification
         assertFalse(isNewer("1.0-rc", "1.0-cr"));

@@ -2,7 +2,7 @@ package de.geolykt.mavenresolver.version;
 
 import de.geolykt.mavenresolver.misc.ConfusedResolverException;
 
-public final class QualifierVersionPart implements MavenVersionPart {
+final class QualifierVersionPart implements MavenVersionPart {
 
     private int prefixCodepoint;
     private String qualifier;

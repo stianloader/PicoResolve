@@ -1,6 +1,6 @@
 package de.geolykt.mavenresolver.version;
 
-public sealed interface MavenVersionPart extends Comparable<MavenVersionPart> permits NumericVersionPart, PrereleaseVersionPart, QualifierVersionPart {
+interface MavenVersionPart extends Comparable<MavenVersionPart> {
 
     int getPrefixCodepoint();
 
