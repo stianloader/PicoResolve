@@ -163,7 +163,7 @@ public class MavenResolver {
     }
 
     public void download(GAV gav, String classifier, String extension, Executor executor, ObjectSink<MavenResource> sink) {
-        if (gav.version().getOriginText().toLowerCase(Locale.ROOT).equals("-snapshot")) {
+        if (gav.version().getOriginText().toLowerCase(Locale.ROOT).endsWith("-snapshot")) {
             downloadSnapshot(gav, classifier, extension, executor, sink);
         } else {
             downloadSimple(gav, classifier, extension, executor, new ObjectSink<MavenResource>() {
