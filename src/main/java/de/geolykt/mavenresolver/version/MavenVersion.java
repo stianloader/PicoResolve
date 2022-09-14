@@ -162,14 +162,14 @@ public class MavenVersion implements Comparable<MavenVersion> {
         }
         if (parts.size() < o.parts.size()) {
             MavenVersionPart part = o.parts.get(parts.size());
-            if (part instanceof NumericVersionPart) {
+            if (part instanceof NumericVersionPart || part instanceof QualifierVersionPart) {
                 return -1;
             }
             return -part.compareTo(new PrereleaseVersionPart(part.getPrefixCodepoint(), ""));
         }
         if (parts.size() > o.parts.size()) {
             MavenVersionPart part = parts.get(o.parts.size());
-            if (part instanceof NumericVersionPart) {
+            if (part instanceof NumericVersionPart || part instanceof QualifierVersionPart) {
                 return 1;
             }
             return part.compareTo(new PrereleaseVersionPart(part.getPrefixCodepoint(), ""));

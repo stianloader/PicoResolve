@@ -1,6 +1,7 @@
 package mavenresolver;
 
 import java.net.URI;
+import java.nio.file.Paths;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.Semaphore;
@@ -15,7 +16,7 @@ import de.geolykt.mavenresolver.version.VersionCatalogue;
 public class ResolverTest {
 
     public void printVersions(String group, String artifact) {
-        MavenResolver resolver = new MavenResolver().addRepository(new URIMavenRepository(URI.create("https://repo1.maven.org/maven2/")));
+        MavenResolver resolver = new MavenResolver().addRepository(new URIMavenRepository(Paths.get("testcache"), URI.create("https://repo1.maven.org/maven2/")));
         Executor exec = ForkJoinPool.commonPool();
         Semaphore lock = new Semaphore(1);
         lock.acquireUninterruptibly();

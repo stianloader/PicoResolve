@@ -74,23 +74,32 @@ public class VersionRange {
                     sets.add(new Edge(version, type));
                 } else {
                     int seperatorPos = token.indexOf(',');
-                    MavenVersion left = MavenVersion.parse(token.substring(1, seperatorPos));
-                    MavenVersion right = MavenVersion.parse(token.substring(seperatorPos + 1, token.length() - 1));
-                    IntervalType type;
-                    if (closedLeft) {
-                        if (closedRight) {
-                            type = IntervalType.CLOSED;
+                    if (seperatorPos == -1) {
+                        if (closedLeft && closedRight) {
+                            // Most likely [version]
+                            sets.add(new PinnedVersion(MavenVersion.parse(token.substring(1, token.length() - 1))));
                         } else {
-                            type = IntervalType.UPPER_OPEN;
+                            throw new AssertionError(token + "---" + string);
                         }
                     } else {
-                        if (closedRight) {
-                            type = IntervalType.LOWER_OPEN;
+                        MavenVersion left = MavenVersion.parse(token.substring(1, seperatorPos));
+                        MavenVersion right = MavenVersion.parse(token.substring(seperatorPos + 1, token.length() - 1));
+                        IntervalType type;
+                        if (closedLeft) {
+                            if (closedRight) {
+                                type = IntervalType.CLOSED;
+                            } else {
+                                type = IntervalType.UPPER_OPEN;
+                            }
                         } else {
-                            type = IntervalType.BOTH_OPEN;
+                            if (closedRight) {
+                                type = IntervalType.LOWER_OPEN;
+                            } else {
+                                type = IntervalType.BOTH_OPEN;
+                            }
                         }
+                        sets.add(new Interval(left, right, type));
                     }
-                    sets.add(new Interval(left, right, type));
                 }
             }
         }
@@ -129,7 +138,7 @@ public class VersionRange {
             if (type == IntervalType.CLOSED) {
                 return !version.isNewerThan(upperBound) && !lowerBound.isNewerThan(version);
             } else if (type == IntervalType.UPPER_OPEN) {
-                return upperBound.isNewerThan(version) && !lowerBound.isNewerThan(version);
+                return upperBound.isNewerThan(version) && version.isNewerThan(lowerBound);
             } else if (type == IntervalType.LOWER_OPEN) {
                 return !version.isNewerThan(upperBound) && version.isNewerThan(lowerBound);
             } else {
@@ -188,6 +197,24 @@ public class VersionRange {
                 // Type is EdgeType.ABOVE
                 return "(" + edgeVersion + ",)";
             }
+        }
+    }
+
+    private static class PinnedVersion implements VersionSet {
+        private final MavenVersion version;
+
+        public PinnedVersion(MavenVersion version) {
+            this.version = version;
+        }
+
+        @Override
+        public boolean contains(MavenVersion version) {
+            return !this.version.isNewerThan(version) && !version.isNewerThan(this.version);
+        }
+
+        @Override
+        public String toString() {
+            return '[' + version.toString() + ']';
         }
     }
 

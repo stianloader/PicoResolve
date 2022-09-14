@@ -114,5 +114,9 @@ public class MavenVersionTest {
         assertTrue(isNewer("1.0.10-2", "1.0.10-1"));
         assertFalse(isNewer("1.0.9-3", "1.0.10-2"));
         assertTrue(isNewer("1.0.9-3", "1.0.1-0"));
+
+        // Eclipse stuff
+        assertTrue(isNewer("3.3.0-I20070605-0010", "3.3.0"));
+        assertFalse(isNewer("3.3.0", "3.3.0-I20070605-0010"));
     }
 }

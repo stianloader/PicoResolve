@@ -9,6 +9,9 @@ public class ChildElementIterable implements Iterable<Element> {
     private final Element parent;
 
     public ChildElementIterable(Element parent) {
+        if (parent == null) {
+            throw new NullPointerException("The argument \"parent\" is null.");
+        }
         this.parent = parent;
     }
 

@@ -1,7 +1,8 @@
 package de.geolykt.mavenresolver;
 
-import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -121,7 +122,7 @@ public class MavenResolver {
     }
 
     public void getVersions(String groupId, String artifactId, Executor executor, ObjectSink<VersionCatalogue> sink) {
-        String mavenMetadataPath = groupId.replace('.', '/') + '/' + artifactId.replace('.', '/') + "/maven-metadata.xml";
+        String mavenMetadataPath = groupId.replace('.', '/') + '/' + artifactId + "/maven-metadata.xml";
 
         getResource(mavenMetadataPath, executor, new ObjectSink<MavenResource>() {
 
@@ -142,8 +143,8 @@ public class MavenResolver {
                     return;
                 }
                 VersionCatalogue catalogue;
-                try {
-                    catalogue = new VersionCatalogue(item);
+                try (InputStream is = Files.newInputStream(item.getPath())) {
+                    catalogue = new VersionCatalogue(is);
                 } catch (Exception e) {
                     onError(e);
                     return;
@@ -224,7 +225,10 @@ public class MavenResolver {
                     reader.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false);
                     reader.setFeature("http://xml.org/sax/features/external-general-entities", false);
                     reader.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
-                    Document xmlDoc = reader.read(new ByteArrayInputStream(item.getBytes()));
+                    Document xmlDoc;
+                    try (InputStream is = Files.newInputStream(item.getPath())) {
+                        xmlDoc = reader.read(is);
+                    }
                     Element project = xmlDoc.getRootElement();
                     project.normalize();
 
@@ -258,7 +262,7 @@ public class MavenResolver {
             return string;
         }
         int indexEnd = string.indexOf('}', indexStart);
-        String property = string.substring(indexStart, indexEnd);
+        String property = string.substring(indexStart + 2, indexEnd);
         String replacement = placeholders.get(property);
         if (replacement == null) {
             return applyPlaceholders(string, indexEnd, placeholders);
@@ -275,18 +279,24 @@ public class MavenResolver {
 
     private void computePlaceholders(GAV gav, Document pom, List<Document> parentPom, Map<String, String> out) {
         out.put("project.version", gav.version().getOriginText());
-        for (ListIterator<Document> lit = parentPom.listIterator(parentPom.size() - 1); lit.hasPrevious();) {
-            Element properties = lit.previous().getRootElement().element("properties");
-            if (properties == null) {
-                continue;
-            }
-            for (Element prop : new ChildElementIterable(properties)) {
-                out.put(prop.getName(), prop.getText());
+        out.put("project.groupId", gav.group());
+        out.put("project.artifactId", gav.artifact());
+        if (!parentPom.isEmpty()) {
+            for (ListIterator<Document> lit = parentPom.listIterator(parentPom.size()); lit.hasPrevious();) {
+                Element properties = lit.previous().getRootElement().element("properties");
+                if (properties == null) {
+                    continue;
+                }
+                for (Element prop : new ChildElementIterable(properties)) {
+                    out.put(prop.getName(), prop.getText());
+                }
             }
         }
         Element properties = pom.getRootElement().element("properties");
-        for (Element prop : new ChildElementIterable(properties)) {
-            out.put(prop.getName(), prop.getText());
+        if (properties != null) {
+            for (Element prop : new ChildElementIterable(properties)) {
+                out.put(prop.getName(), prop.getText());
+            }
         }
     }
 
@@ -319,6 +329,8 @@ public class MavenResolver {
                 if (dep.version == null) {
                     dep.version = range;
                 }
+            } else if (dep.version == null) {
+                throw new IllegalStateException();
             }
 
             if (scope != null) {
@@ -534,6 +546,9 @@ public class MavenResolver {
                     if (selected == null) {
                         selected = item.latestVersion;
                     }
+                    if (selected == null) {
+                        throw new NullPointerException("\"selected\" is null. Possible malformed version catalogue?");
+                    }
                     to.putIfAbsent(dep, selected);
                 }
 
@@ -623,6 +638,9 @@ public class MavenResolver {
 
                     @Override
                     public void nextItem(DependencyContainerNode item) {
+                        if (item == null) {
+                            throw new NullPointerException("Argument \"item\" is null!");
+                        }
                         subDeps.add(item);
                     }
 
@@ -670,7 +688,10 @@ public class MavenResolver {
                     reader.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false);
                     reader.setFeature("http://xml.org/sax/features/external-general-entities", false);
                     reader.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
-                    Document xmlDoc = reader.read(new ByteArrayInputStream(item.getBytes()));
+                    Document xmlDoc;
+                    try (InputStream is = Files.newInputStream(item.getPath())) {
+                        xmlDoc = reader.read(is);
+                    }
                     Element project = xmlDoc.getRootElement();
                     project.normalize();
 
@@ -682,7 +703,7 @@ public class MavenResolver {
                         if (cached != null) {
                             dependencyContainerNode = cached;
                         }
-                        sink.nextItem(cached);
+                        sink.nextItem(dependencyContainerNode);
                         sink.onComplete();
                         return;
                     } else {
@@ -707,7 +728,7 @@ public class MavenResolver {
                                 if (cached != null) {
                                     dependencyContainerNode = cached;
                                 }
-                                sink.nextItem(cached);
+                                sink.nextItem(dependencyContainerNode);
                                 sink.onComplete();
                                 return;
                             }
@@ -758,7 +779,7 @@ public class MavenResolver {
                     return;
                 }
                 try {
-                    VersionCatalogue catalogue = new VersionCatalogue(item.getBytes());
+                    VersionCatalogue catalogue = new VersionCatalogue(Files.newInputStream(item.getPath()));
                     for (SnapshotVersion snapshot : catalogue.snapshotVersions) {
                         if (!snapshot.extension().equals(extension)) {
                             continue;

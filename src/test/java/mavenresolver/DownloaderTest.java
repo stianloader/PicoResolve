@@ -1,6 +1,7 @@
 package mavenresolver;
 
 import java.net.URI;
+import java.nio.file.Paths;
 import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.Semaphore;
 
@@ -18,8 +19,8 @@ public class DownloaderTest {
     @Test
     public void doTest() {
         MavenResolver resolver = new MavenResolver()
-                .addRepository(new URIMavenRepository(URI.create("https://repo1.maven.org/maven2/")))
-                .addRepository(new URIMavenRepository(URI.create("https://papermc.io/repo/repository/maven-public/")));
+                .addRepository(new URIMavenRepository(Paths.get("testcache"), URI.create("https://repo1.maven.org/maven2/")))
+                .addRepository(new URIMavenRepository(Paths.get("testcache"), URI.create("https://papermc.io/repo/repository/maven-public/")));
 
         Semaphore lock = new Semaphore(1);
         lock.acquireUninterruptibly();

@@ -1,6 +1,7 @@
 package de.geolykt.mavenresolver.version;
 
-import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -11,7 +12,6 @@ import org.dom4j.Element;
 import org.dom4j.io.SAXReader;
 import org.xml.sax.SAXException;
 
-import de.geolykt.mavenresolver.MavenResource;
 import de.geolykt.mavenresolver.misc.ChildElementIterable;
 import de.geolykt.mavenresolver.misc.ConfusedResolverException;
 
@@ -32,16 +32,35 @@ public class VersionCatalogue {
     public int lastUpdateMinute;
     public int lastUpdateSecond;
 
-    public VersionCatalogue(MavenResource resource) throws SAXException, DocumentException {
-        this(resource.getBytes());
-    }
-
-    public VersionCatalogue(byte[] data) throws SAXException, DocumentException {
+    public VersionCatalogue(InputStream is) throws SAXException, DocumentException, IOException {
         SAXReader reader = new SAXReader();
         reader.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false);
         reader.setFeature("http://xml.org/sax/features/external-general-entities", false);
         reader.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
-        Document xmlDoc = reader.read(new ByteArrayInputStream(data));
+        DocumentException caught = null;
+        Document xmlDoc = null;
+        try {
+            xmlDoc = reader.read(is);
+        } catch (DocumentException t) {
+            caught = t;
+        } finally {
+            try {
+                is.close();
+            } catch (Throwable t) {
+                if (caught == null) {
+                    throw t;
+                }
+                t.addSuppressed(caught);
+                throw t;
+            }
+            if (caught != null) {
+                throw caught;
+            }
+        }
+
+        if (xmlDoc == null) {
+            throw new NullPointerException("xmlDoc is null");
+        }
 
         Element metadata = xmlDoc.getRootElement();
         metadata.normalize();
@@ -77,6 +96,13 @@ public class VersionCatalogue {
                 break;
             case "snapshotversions":
                 snapshotVersions = element;
+                break;
+            case "version":
+                // Encountered in https://repo1.maven.org/maven2/org/eclipse/core/commands/maven-metadata.xml
+                if (latestVersion != null) {
+                    throw new IllegalStateException();
+                }
+                latestVersion = MavenVersion.parse(element.getText());
                 break;
             }
         }
