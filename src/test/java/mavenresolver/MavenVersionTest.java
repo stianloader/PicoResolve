@@ -39,6 +39,9 @@ public class MavenVersionTest {
 
         assertFalse(isNewer("1-a1", "1-alpha-1"));
         assertFalse(isNewer("1-alpha-1", "1-a1"));
+
+        assertFalse(isNewer("1-final", "1"));
+        assertFalse(isNewer("1", "1-final"));
     }
 
     @Test

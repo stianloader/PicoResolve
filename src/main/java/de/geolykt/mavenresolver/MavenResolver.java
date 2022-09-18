@@ -3,6 +3,7 @@ package de.geolykt.mavenresolver;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
+import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -31,6 +32,7 @@ import de.geolykt.mavenresolver.misc.SinkMultiplexer;
 import de.geolykt.mavenresolver.version.MavenVersion;
 import de.geolykt.mavenresolver.version.VersionCatalogue;
 import de.geolykt.mavenresolver.version.VersionCatalogue.SnapshotVersion;
+
 import de.geolykt.mavenresolver.version.VersionRange;
 
 public class MavenResolver {
@@ -197,7 +199,7 @@ public class MavenResolver {
         }
     }
 
-    private void downloadParentPoms(Element parentElement, Executor executor, ObjectSink<Document> sink) {
+    private void downloadParentPoms(Element parentElement, Executor executor, ObjectSink<Map.Entry<GAV, Document>> sink) {
         if (parentElement == null) {
             sink.onComplete();
             return;
@@ -206,7 +208,8 @@ public class MavenResolver {
         String artifactId = parentElement.elementText("artifactId");
         String version = parentElement.elementText("version");
 
-        download(new GAV(group, artifactId, MavenVersion.parse(version)), null, "pom", executor, new ObjectSink<MavenResource>() {
+        GAV gav = new GAV(group, artifactId, MavenVersion.parse(version));
+        download(gav, null, "pom", executor, new ObjectSink<MavenResource>() {
 
             private volatile boolean hadElements = false;
 
@@ -232,7 +235,7 @@ public class MavenResolver {
                     Element project = xmlDoc.getRootElement();
                     project.normalize();
 
-                    sink.nextItem(xmlDoc);
+                    sink.nextItem(new AbstractMap.SimpleImmutableEntry<>(gav, xmlDoc));
 
                     Element parent = project.element("parent");
 
@@ -277,13 +280,34 @@ public class MavenResolver {
         return applyPlaceholders(string, 0, placeholders);
     }
 
-    private void computePlaceholders(GAV gav, Document pom, List<Document> parentPom, Map<String, String> out) {
+    private void computePlaceholders(GAV gav, Document pom, List<Map.Entry<GAV, Document>> parentPom, Map<String, String> out) {
+        for (Element elem : new ChildElementIterable(pom.getRootElement())) {
+            // See https://maven.apache.org/pom.html#properties (retrieved SEPT 18th 2022 18:19 CEST)
+            // "project.x: A dot (.) notated path in the POM will contain the corresponding element's value."
+            // For the sake of brevity, we only iterate over the top level of elements
+            // I deem it to be very uncommon that we see use of such properties outside of the good ol' project.groupId and similar,
+            // so I believe that we can get away with being a bit more lazy there.
+            // While you might laugh, my gut is telling that checking more deeply nested elements might have unforeseen consequences.
+            if (elem.isTextOnly()) {
+                // TODO We also need to compute placeholders for the parent POMs so placeholders that contain placeholders can be evaluated correctly
+                // In theory easily doable, but cumbersome
+                // With hindsight that could easily be doable too by moving this block a bit further down, but in typical geolykt fashion I'll do it later
+                out.put("project." + elem.getPath(), elem.getText());
+            }
+        }
+
+        // However in turn these are not documented... Oh well...
+        out.put("pom.version", gav.version().getOriginText());
+        out.put("pom.groupId", gav.group());
+        out.put("pom.artifactId", gav.artifact());
+
+        // Then we also apply optional project.* placeholders that are inherited from the parent pom (you gotta be kidding me)
         out.put("project.version", gav.version().getOriginText());
         out.put("project.groupId", gav.group());
-        out.put("project.artifactId", gav.artifact());
+
         if (!parentPom.isEmpty()) {
-            for (ListIterator<Document> lit = parentPom.listIterator(parentPom.size()); lit.hasPrevious();) {
-                Element properties = lit.previous().getRootElement().element("properties");
+            for (ListIterator<Map.Entry<GAV, Document>> lit = parentPom.listIterator(parentPom.size()); lit.hasPrevious();) {
+                Element properties = lit.previous().getValue().getRootElement().element("properties");
                 if (properties == null) {
                     continue;
                 }
@@ -300,7 +324,7 @@ public class MavenResolver {
         }
     }
 
-    private void readDependencies(Element dependencyBlock, Map<String, String> placeholders, DependencyContainerNode node) {
+    private void readDependencies(Element dependencyBlock, Map<String, String> placeholders, Map<VersionlessDependency, VersionRange> fallbackVersions, DependencyContainerNode node) {
         for (Element dependency : new ChildElementIterable(dependencyBlock)) {
             // FIXME the dependency management block is a thing. AND it is apparently inherited from parent POMs.
             //       not too much of an issue, but must be implemented eventually nonetheless
@@ -330,7 +354,11 @@ public class MavenResolver {
                     dep.version = range;
                 }
             } else if (dep.version == null) {
-                throw new IllegalStateException();
+                dep.version = fallbackVersions.get(new VersionlessDependency(group, artifactId, classifier, type == null ? "jar" : type));
+                if (dep.version == null) {
+                    throw new IllegalStateException("Version not found for " + dep.group + ':' + dep.artifact + ':' + dep.classifier + ':' + dep.type
+                            + " declared by " + node.gav);
+                }
             }
 
             if (scope != null) {
@@ -348,13 +376,160 @@ public class MavenResolver {
         }
     }
 
-    private void fillInDependencies(GAV gav, Document pom, List<Document> parentPoms, DependencyContainerNode node) {
+    private void fillInDependencyManagement(GAV gav, Executor executor, Document pom, List<Map.Entry<GAV, Document>> parentPoms, int parentPomIndex, ConcurrentMap<VersionlessDependency, VersionRange> out, Runnable onDone) {
         Map<String, String> placeholders = new HashMap<>();
         computePlaceholders(gav, pom, parentPoms, placeholders);
+
+        AtomicBoolean intermediaryTaskDone = new AtomicBoolean();
+        boolean hasDependencyManagement = false;
+
         Element project = pom.getRootElement();
-        Element dependencies = project.element("dependencies");
-        if (dependencies != null) {
-            readDependencies(dependencies, placeholders, node);
+        Element dependencyManagement = project.element("dependencyManagement");
+        if (dependencyManagement != null) {
+            Element dependencies = dependencyManagement.element("dependencies");
+            if (dependencies != null) {
+                // TODO Can BOM (Bill-of-materials) POMs inherit their own dependency management blocks from the parent too? If so, it'd be annoying because that would need to be implemented in it's own method
+                handleDependencyManagementDeps(executor, dependencies, placeholders, out, () -> {
+                    if (!intermediaryTaskDone.compareAndSet(false, true)) {
+                        onDone.run();
+                    }
+                });
+                hasDependencyManagement = true;
+            }
+        }
+
+        if (parentPomIndex == parentPoms.size()) {
+            // There is no parent, so we can call the runnable if it needs to be run (i.e. because either the dependency management block was already evaluated or because there is no dependency management block)
+            if (!hasDependencyManagement || !intermediaryTaskDone.compareAndSet(false, true)) {
+                onDone.run();
+            }
+            return;
+        }
+
+        GAV parentGAV = parentPoms.get(parentPomIndex).getKey();
+        Document parentPom = parentPoms.get(parentPomIndex).getValue();
+
+        if (hasDependencyManagement) {
+            fillInDependencyManagement(parentGAV, executor, parentPom, parentPoms, parentPomIndex + 1, out, () -> {
+                if (!intermediaryTaskDone.compareAndSet(false, true)) {
+                    onDone.run();
+                }
+            });
+        } else {
+            fillInDependencyManagement(parentGAV, executor, parentPom, parentPoms, parentPomIndex + 1, out, onDone::run);
+        }
+    }
+
+    private void fillInDependencies(GAV gav, Executor executor, Document pom, List<Map.Entry<GAV, Document>> parentPoms, DependencyContainerNode node, Runnable onDone) {
+        Map<String, String> placeholders = new HashMap<>();
+        ConcurrentMap<VersionlessDependency, VersionRange> dependencyVersions = new ConcurrentHashMap<>();
+        computePlaceholders(gav, pom, parentPoms, placeholders);
+
+        fillInDependencyManagement(gav, executor, pom, parentPoms, 0, dependencyVersions, () -> {
+            Element dependencies = pom.getRootElement().element("dependencies");
+            if (dependencies != null) {
+                readDependencies(dependencies, placeholders, dependencyVersions, node);
+            }
+            onDone.run();
+        });
+    }
+
+    private void handleDependencyManagementDeps(Executor executor, Element dependencyBlock, Map<String, String> placeholders, Map<VersionlessDependency, VersionRange> out, Runnable onDone) {
+        AtomicInteger scheduledTasks = new AtomicInteger();
+        AtomicBoolean guard = new AtomicBoolean(true);
+        for (Element dependency : new ChildElementIterable(dependencyBlock)) {
+            String group = dependency.elementText("groupId");
+            String artifactId = dependency.elementText("artifactId");
+            String version = dependency.elementText("version");
+            String scope = dependency.elementText("scope");
+            String classifier = dependency.elementText("classifier");
+            String type = dependency.elementText("type");
+
+            group = applyPlaceholders(group, placeholders);
+            artifactId = applyPlaceholders(artifactId, placeholders);
+            version = applyPlaceholders(version, placeholders);
+            scope = applyPlaceholders(scope, placeholders);
+            classifier = applyPlaceholders(classifier, placeholders);
+            type = applyPlaceholders(type, placeholders);
+
+            if (scope != null && scope.equalsIgnoreCase("import")) {
+                if (type == null || !type.equals("pom")) {
+                    throw new IllegalStateException("Type must be \"pom\" for the import scope, but it is " + type);
+                }
+                if (classifier != null) {
+                    throw new IllegalStateException("Cannot have an classifier when using the import scope!");
+                }
+                VersionRange range = VersionRange.parse(version);
+                MavenVersion mversion = range.getRecommended();
+                if (mversion == null) {
+                    // At least there is that... HOPEFULLY it isn't a bug within m2e
+                    throw new IllegalStateException("Cannot use version ranges within the depencency management block!");
+                }
+                GAV importerGAV = new GAV(group, artifactId, mversion);
+                scheduledTasks.incrementAndGet();
+                downloadPom(importerGAV, executor, new ObjectSink<Document>() {
+
+                    private volatile boolean resolved = false;
+
+                    @Override
+                    public void onError(Throwable error) {
+                        error.printStackTrace(); // TODO do
+                    }
+
+                    @Override
+                    public void nextItem(Document item) {
+                        // TODO be aware of the return; statements here
+                        if (resolved) {
+                            return;
+                        }
+                        resolved = true;
+                        Element project = item.getRootElement();
+                        Element dependencyManagement = project.element("dependencyManagement");
+                        if (dependencyManagement == null) {
+                            if (scheduledTasks.decrementAndGet() == 0 && guard.compareAndSet(false, true)) {
+                                onDone.run();
+                            }
+                            return; // What a waste of CPU time
+                        }
+                        Element dependencies = dependencyManagement.element("dependencies");
+                        if (dependencies == null) {
+                            if (scheduledTasks.decrementAndGet() == 0 && guard.compareAndSet(false, true)) {
+                                onDone.run();
+                            }
+                            return;
+                        }
+                        handleDependencyManagementDeps(executor, dependencies, new HashMap<>(), out, () -> {
+                            if (scheduledTasks.decrementAndGet() == 0 && guard.compareAndSet(false, true)) {
+                                onDone.run();
+                            }
+                        }); // FIXME Compute placeholders
+                    }
+
+                    @Override
+                    public void onComplete() {
+                        // Ignore
+                    }
+                });
+            } else {
+                // provided, runtime, test and compile are all treated identically
+                // system is an outlier here, but that scope is not supported by us
+                if (type == null) {
+                    type = "jar";
+                }
+                VersionRange newRange = VersionRange.parse(version);
+                out.compute(new VersionlessDependency(group, artifactId, classifier, type), (key, oldRange) -> {
+                    if (oldRange == null) {
+                        return newRange;
+                    } else {
+                        return oldRange.intersect(newRange);
+                    }
+                });
+            }
+        }
+
+        guard.set(false);
+        if (scheduledTasks.get() == 0 && guard.compareAndSet(false, true)) {
+            onDone.run();
         }
     }
 
@@ -626,6 +801,9 @@ public class MavenResolver {
 
             AtomicBoolean concurrencyLock = new AtomicBoolean(); // This object simply exists to avoid incredibly rare issues concerning concurrency
             for (GAV dependencyGAV : resolveGAVs) {
+                if (dependencyGAV.group().startsWith("${pom.groupId}")) {
+                    throw new IllegalStateException("This is nonsense! " + dependencyGAV); // FIXME Debug line
+                }
                 getDependencies(dependencyGAV, executor, new ObjectSink<DependencyContainerNode>() {
 
                     @Override
@@ -651,6 +829,52 @@ public class MavenResolver {
                         }
                     }
                 });
+            }
+        });
+    }
+
+    private void downloadPom(GAV gav, Executor executor, ObjectSink<Document> sink) {
+        download(gav, null, "pom", executor, new ObjectSink<MavenResource>() {
+
+            private volatile boolean processedElement = false;
+
+            @Override
+            public void onError(Throwable error) {
+                if (!processedElement) {
+                    sink.onError(error);
+                }
+            }
+
+            @Override
+            public void nextItem(MavenResource item) {
+                if (processedElement) {
+                    return;
+                }
+                processedElement = true;
+
+                try {
+                    SAXReader reader = new SAXReader();
+                    reader.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false);
+                    reader.setFeature("http://xml.org/sax/features/external-general-entities", false);
+                    reader.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
+                    Document xmlDoc;
+                    try (InputStream is = Files.newInputStream(item.getPath())) {
+                        xmlDoc = reader.read(is);
+                    }
+                    xmlDoc.getRootElement().normalize();
+
+                    sink.nextItem(xmlDoc);
+                } catch (Exception e) {
+                    sink.onError(e);
+                }
+            }
+
+            @Override
+            public void onComplete() {
+                if (processedElement) {
+                    return;
+                }
+                sink.onComplete();
             }
         });
     }
@@ -698,17 +922,14 @@ public class MavenResolver {
                     Element parent = project.element("parent");
                     if (parent == null) {
                         DependencyContainerNode dependencyContainerNode = new DependencyContainerNode(gav);
-                        fillInDependencies(gav, xmlDoc, Collections.emptyList(), dependencyContainerNode);
-                        cached = depdenencyCache.putIfAbsent(gav, dependencyContainerNode);
-                        if (cached != null) {
-                            dependencyContainerNode = cached;
-                        }
-                        sink.nextItem(dependencyContainerNode);
-                        sink.onComplete();
-                        return;
+                        fillInDependencies(gav, executor, xmlDoc, Collections.emptyList(), dependencyContainerNode, () -> {
+                            DependencyContainerNode c2 = depdenencyCache.putIfAbsent(gav, dependencyContainerNode);
+                            sink.nextItem(c2 == null ? dependencyContainerNode : c2);
+                            sink.onComplete();
+                        });
                     } else {
-                        List<Document> parents = new CopyOnWriteArrayList<>();
-                        downloadParentPoms(parent, executor, new ObjectSink<Document>() {
+                        List<Map.Entry<GAV, Document>> parents = new CopyOnWriteArrayList<>();
+                        downloadParentPoms(parent, executor, new ObjectSink<Map.Entry<GAV, Document>>() {
 
                             @Override
                             public void onError(Throwable error) {
@@ -716,21 +937,18 @@ public class MavenResolver {
                             }
 
                             @Override
-                            public void nextItem(Document item) {
+                            public void nextItem(Map.Entry<GAV, Document> item) {
                                 parents.add(item);
                             }
 
                             @Override
                             public void onComplete() {
                                 DependencyContainerNode dependencyContainerNode = new DependencyContainerNode(gav);
-                                fillInDependencies(gav, xmlDoc, parents, dependencyContainerNode);
-                                DependencyContainerNode cached = depdenencyCache.putIfAbsent(gav, dependencyContainerNode);
-                                if (cached != null) {
-                                    dependencyContainerNode = cached;
-                                }
-                                sink.nextItem(dependencyContainerNode);
-                                sink.onComplete();
-                                return;
+                                fillInDependencies(gav, executor, xmlDoc, parents, dependencyContainerNode, () -> {
+                                    DependencyContainerNode c2 = depdenencyCache.putIfAbsent(gav, dependencyContainerNode);
+                                    sink.nextItem(c2 == null ? dependencyContainerNode : c2);
+                                    sink.onComplete();
+                                });
                             }
                         });
                     }
