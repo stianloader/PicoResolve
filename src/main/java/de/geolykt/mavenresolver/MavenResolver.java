@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.ListIterator;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -107,9 +108,7 @@ public class MavenResolver {
                 if (hadItem.get()) {
                     sink.onComplete();
                 } else {
-                    IOException e = new IOException("No repository declared resource \"" + path + "\"");
-                    e.fillInStackTrace();
-                    sink.onError(e);
+                    sink.onError(new IOException("No repository declared resource \"" + path + "\"").fillInStackTrace());
                 }
             }
         });
@@ -165,6 +164,9 @@ public class MavenResolver {
     }
 
     public void download(GAV gav, String classifier, String extension, Executor executor, ObjectSink<MavenResource> sink) {
+        if (gav.version().getOriginText().equals("${version.shrinkwrap_descriptors}")) {
+            throw new IllegalStateException();
+        }
         if (gav.version().getOriginText().toLowerCase(Locale.ROOT).endsWith("-snapshot")) {
             downloadSnapshot(gav, classifier, extension, executor, sink);
         } else {
@@ -297,6 +299,18 @@ public class MavenResolver {
         }
 
         // However in turn these are not documented... Oh well...
+        // TODO And do you know where those (from what I assume) come from? The pom.properties file!
+        // As such I highly recommend investigating whether the pom.properties file can store different placeholders
+        // and whether different *.properties files can be used to define placeholders.
+        // IF that is the case, we are in deep trouble and might need to rethink this method.
+        // For the meantime I'll sweep this edge case under the rug - especially because they do not appear to be explicitly
+        // documented. More specifically I am not too sure how what generates the pom.properties file that can be seen
+        // inside jars built by maven. Nor whether the contents of it can be manipulated to any degree.
+        // Therefore the values set below are based on reasonable expectations that are very unlikely to be invalid for a given artifact.
+        // The artifacts that make use of the feature (should it exist) should be few and far in between as the feature
+        // will be very niche (to the point that I deem that properties from the settings.xml file are more common).
+
+        // TODO also, how is the build timestamp treated?
         out.put("pom.version", gav.version().getOriginText());
         out.put("pom.groupId", gav.group());
         out.put("pom.artifactId", gav.artifact());
@@ -326,8 +340,6 @@ public class MavenResolver {
 
     private void readDependencies(Element dependencyBlock, Map<String, String> placeholders, Map<VersionlessDependency, VersionRange> fallbackVersions, DependencyContainerNode node) {
         for (Element dependency : new ChildElementIterable(dependencyBlock)) {
-            // FIXME the dependency management block is a thing. AND it is apparently inherited from parent POMs.
-            //       not too much of an issue, but must be implemented eventually nonetheless
 
             String group = dependency.elementText("groupId");
             String artifactId = dependency.elementText("artifactId");
@@ -464,10 +476,12 @@ public class MavenResolver {
                 if (mversion == null) {
                     // At least there is that... HOPEFULLY it isn't a bug within m2e
                     throw new IllegalStateException("Cannot use version ranges within the depencency management block!");
+                } else if (mversion.getOriginText().indexOf('{') != -1) {
+                    throw new IllegalStateException("Invalid recommended maven version: " + mversion);
                 }
-                GAV importerGAV = new GAV(group, artifactId, mversion);
+                GAV importedGAV = new GAV(group, artifactId, mversion);
                 scheduledTasks.incrementAndGet();
-                downloadPom(importerGAV, executor, new ObjectSink<Document>() {
+                downloadPom(importedGAV, executor, new ObjectSink<Document>() {
 
                     private volatile boolean resolved = false;
 
@@ -478,7 +492,6 @@ public class MavenResolver {
 
                     @Override
                     public void nextItem(Document item) {
-                        // TODO be aware of the return; statements here
                         if (resolved) {
                             return;
                         }
@@ -498,11 +511,55 @@ public class MavenResolver {
                             }
                             return;
                         }
-                        handleDependencyManagementDeps(executor, dependencies, new HashMap<>(), out, () -> {
-                            if (scheduledTasks.decrementAndGet() == 0 && guard.compareAndSet(false, true)) {
-                                onDone.run();
-                            }
-                        }); // FIXME Compute placeholders
+
+                        Element parent = project.element("parent");
+                        if (parent == null) {
+                            Map<String, String> placeholdersImported = new HashMap<>();
+                            computePlaceholders(importedGAV, item, Collections.emptyList(), placeholdersImported);
+                            handleDependencyManagementDeps(executor, dependencies, placeholdersImported, out, () -> {
+                                if (scheduledTasks.decrementAndGet() == 0 && guard.compareAndSet(false, true)) {
+                                    onDone.run();
+                                }
+                            });
+                        } else {
+                            downloadParentPoms(parent, executor, new ObjectSink<>() {
+
+                                private volatile boolean done;
+                                private List<Entry<GAV, Document>> parentPoms = new ArrayList<>();
+
+                                @Override
+                                public void onError(Throwable error) {
+                                    if (done) {
+                                        return;
+                                    }
+                                    done = true;
+                                    // TODO find a way to not absorb the error here
+                                    if (scheduledTasks.decrementAndGet() == 0 && guard.compareAndSet(false, true)) {
+                                        onDone.run();
+                                    }
+                                }
+
+                                @Override
+                                public void nextItem(Entry<GAV, Document> item) {
+                                    parentPoms.add(item);
+                                }
+
+                                @Override
+                                public void onComplete() {
+                                    if (done) {
+                                        return;
+                                    }
+                                    done = true;
+                                    Map<String, String> placeholdersImported = new HashMap<>();
+                                    computePlaceholders(importedGAV, item, parentPoms, placeholdersImported);
+                                    handleDependencyManagementDeps(executor, dependencies, placeholdersImported, out, () -> {
+                                        if (scheduledTasks.decrementAndGet() == 0 && guard.compareAndSet(false, true)) {
+                                            onDone.run();
+                                        }
+                                    });
+                                }
+                            });
+                        } // FIXME Compute placeholders
                     }
 
                     @Override
@@ -537,7 +594,7 @@ public class MavenResolver {
         if (nodes.isEmpty()) {
             throw new IllegalArgumentException("Argument \"nodes\" is an empty list. What is the point of this method call?");
         }
-        List<DependencyContainerNode> subnodes = new ArrayList<>();
+        List<DependencyContainerNode> subnodes = new CopyOnWriteArrayList<>();
         getDependents(nodes, negotiatedCache, subnodes, executor, () -> {
             subnodes.forEach(sink::nextItem);
             if (subnodes.isEmpty()) {
@@ -802,7 +859,7 @@ public class MavenResolver {
             AtomicBoolean concurrencyLock = new AtomicBoolean(); // This object simply exists to avoid incredibly rare issues concerning concurrency
             for (GAV dependencyGAV : resolveGAVs) {
                 if (dependencyGAV.group().startsWith("${pom.groupId}")) {
-                    throw new IllegalStateException("This is nonsense! " + dependencyGAV); // FIXME Debug line
+                    throw new IllegalStateException("This is nonsense! " + dependencyGAV);
                 }
                 getDependencies(dependencyGAV, executor, new ObjectSink<DependencyContainerNode>() {
 
@@ -818,6 +875,9 @@ public class MavenResolver {
                     public void nextItem(DependencyContainerNode item) {
                         if (item == null) {
                             throw new NullPointerException("Argument \"item\" is null!");
+                        }
+                        if (concurrencyLock.get()) {
+                            throw new IllegalStateException("Already completed!");
                         }
                         subDeps.add(item);
                     }

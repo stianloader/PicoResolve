@@ -90,7 +90,23 @@ public class URIMavenRepository implements MavenRepository {
                 Files.copy(resolved.toURL().openStream(), cachePath);
             }
             if (!Files.exists(cachePath)) {
+                Files.writeString(cachePath, "nofile/" + String.valueOf(System.currentTimeMillis()), StandardCharsets.UTF_8);
                 throw new IOException("Unable to download " + path + " to local file storage (for whatever reason)");
+            }
+        } else if (Files.size(cachePath) > 100) {
+            String s = Files.readString(cachePath, StandardCharsets.UTF_8);
+            if (s.startsWith("nofile/")) {
+                s = s.substring(7);
+                try {
+                    if (Long.parseLong(s) + 3_600_000 /* 1 hour */ > System.currentTimeMillis()) {
+                        throw new IOException("Unable to download " + path + " to local file storage (for whatever reason)");
+                    } else {
+                        Files.delete(cachePath);
+                        return getResource0(path, checkChecksums);
+                    }
+                } catch (NumberFormatException nfe) {
+                    nfe.printStackTrace();
+                }
             }
         }
         return cachePath;
@@ -107,6 +123,9 @@ public class URIMavenRepository implements MavenRepository {
                 return;
             }
             try {
+                if (resource.path.toString().equals("testcache/paper/org/hibernate/hibernate-validator/5.4.2.Final/hibernate-validator-5.4.2.Final.pom")) {
+                    System.err.println("DEBUG!"); // TODO DEBUG
+                }
                 sink.nextItem(resource);
                 sink.onComplete();
             } catch (Exception e) {
