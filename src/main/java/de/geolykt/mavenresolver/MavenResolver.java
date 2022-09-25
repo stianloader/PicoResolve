@@ -282,60 +282,50 @@ public class MavenResolver {
         return applyPlaceholders(string, 0, placeholders);
     }
 
-    private void computePlaceholders(GAV gav, Document pom, List<Map.Entry<GAV, Document>> parentPom, Map<String, String> out) {
-        for (Element elem : new ChildElementIterable(pom.getRootElement())) {
+    private void extractProperties(Document project, GAV gav, Map<String, String> out) {
+        for (Element elem : new ChildElementIterable(project.getRootElement())) {
             // See https://maven.apache.org/pom.html#properties (retrieved SEPT 18th 2022 18:19 CEST)
             // "project.x: A dot (.) notated path in the POM will contain the corresponding element's value."
             // For the sake of brevity, we only iterate over the top level of elements
             // I deem it to be very uncommon that we see use of such properties outside of the good ol' project.groupId and similar,
             // so I believe that we can get away with being a bit more lazy there.
             // While you might laugh, my gut is telling that checking more deeply nested elements might have unforeseen consequences.
+
+            // https://maven.apache.org/guides/introduction/introduction-to-the-pom.html#available-variables (retrieved SEPT 25th 2022 16:49 CEST)
+            // Defines that "pom.x" and "x" are allowed, even if they are discouraged (which does not prevent people from actually using them).
+            // TODO as above document documents, implement "project.basedir", "project.baseUri" and "maven.build.timestamp".
+            // Latter would be interesting...
             if (elem.isTextOnly()) {
-                // TODO We also need to compute placeholders for the parent POMs so placeholders that contain placeholders can be evaluated correctly
-                // In theory easily doable, but cumbersome
-                // With hindsight that could easily be doable too by moving this block a bit further down, but in typical geolykt fashion I'll do it later
                 out.put("project." + elem.getPath(), elem.getText());
+                out.put("pom." + elem.getPath(), elem.getText());
+                out.put(elem.getPath(), elem.getText());
             }
         }
-
-        // However in turn these are not documented... Oh well...
-        // TODO And do you know where those (from what I assume) come from? The pom.properties file!
-        // As such I highly recommend investigating whether the pom.properties file can store different placeholders
-        // and whether different *.properties files can be used to define placeholders.
-        // IF that is the case, we are in deep trouble and might need to rethink this method.
-        // For the meantime I'll sweep this edge case under the rug - especially because they do not appear to be explicitly
-        // documented. More specifically I am not too sure how what generates the pom.properties file that can be seen
-        // inside jars built by maven. Nor whether the contents of it can be manipulated to any degree.
-        // Therefore the values set below are based on reasonable expectations that are very unlikely to be invalid for a given artifact.
-        // The artifacts that make use of the feature (should it exist) should be few and far in between as the feature
-        // will be very niche (to the point that I deem that properties from the settings.xml file are more common).
-
-        // TODO also, how is the build timestamp treated?
-        out.put("pom.version", gav.version().getOriginText());
-        out.put("pom.groupId", gav.group());
-        out.put("pom.artifactId", gav.artifact());
-
-        // Then we also apply optional project.* placeholders that are inherited from the parent pom (you gotta be kidding me)
-        out.put("project.version", gav.version().getOriginText());
-        out.put("project.groupId", gav.group());
-
-        if (!parentPom.isEmpty()) {
-            for (ListIterator<Map.Entry<GAV, Document>> lit = parentPom.listIterator(parentPom.size()); lit.hasPrevious();) {
-                Element properties = lit.previous().getValue().getRootElement().element("properties");
-                if (properties == null) {
-                    continue;
-                }
-                for (Element prop : new ChildElementIterable(properties)) {
-                    out.put(prop.getName(), prop.getText());
-                }
-            }
-        }
-        Element properties = pom.getRootElement().element("properties");
+        Element properties = project.getRootElement().element("properties");
         if (properties != null) {
             for (Element prop : new ChildElementIterable(properties)) {
                 out.put(prop.getName(), prop.getText());
             }
         }
+    }
+
+    private void computePlaceholders(GAV gav, Document pom, List<Map.Entry<GAV, Document>> parentPom, Map<String, String> out) {
+        if (!parentPom.isEmpty()) {
+            for (ListIterator<Map.Entry<GAV, Document>> lit = parentPom.listIterator(parentPom.size()); lit.hasPrevious();) {
+                Map.Entry<GAV, Document> entry = lit.previous();
+                extractProperties(entry.getValue(), entry.getKey(), out);
+            }
+        }
+        extractProperties(pom, gav, out);
+
+        // Then we also apply optional project.* placeholders that are inherited from the parent pom (you gotta be kidding me)
+        // We might also need to identify inheritance
+        out.put("project.version", gav.version().getOriginText());
+        out.put("project.groupId", gav.group());
+        out.put("pom.version", gav.version().getOriginText());
+        out.put("pom.groupId", gav.group());
+        out.put("version", gav.version().getOriginText());
+        out.put("groupId", gav.group());
     }
 
     private void readDependencies(Element dependencyBlock, Map<String, String> placeholders, Map<VersionlessDependency, VersionRange> fallbackVersions, DependencyContainerNode node) {
