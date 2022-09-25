@@ -14,6 +14,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -27,9 +28,10 @@ import org.dom4j.io.SAXReader;
 
 import de.geolykt.mavenresolver.DependencyContainerNode.DependencyNode;
 import de.geolykt.mavenresolver.misc.ChildElementIterable;
+import de.geolykt.mavenresolver.misc.ConcurrencyUtil;
 import de.geolykt.mavenresolver.misc.ConfusedResolverException;
+import de.geolykt.mavenresolver.misc.MultiCompleteableFuture;
 import de.geolykt.mavenresolver.misc.ObjectSink;
-import de.geolykt.mavenresolver.misc.SinkMultiplexer;
 import de.geolykt.mavenresolver.version.MavenVersion;
 import de.geolykt.mavenresolver.version.VersionCatalogue;
 import de.geolykt.mavenresolver.version.VersionCatalogue.SnapshotVersion;
@@ -73,93 +75,51 @@ public class MavenResolver {
         return this;
     }
 
-    public void getResource(String path, Executor executor, ObjectSink<MavenResource> sink) {
-        SinkMultiplexer<MavenResource> multiplexer = new SinkMultiplexer<>(new ObjectSink<>() {
+    public CompletableFuture<MavenResource> getResource(String path, Executor executor) {
+        final List<MavenRepository> repos = this.repositories;
+        final int len = repos.size();
 
-            private final AtomicBoolean hadItem = new AtomicBoolean();
-            private final AtomicBoolean closed = new AtomicBoolean();
+        CompletableFuture<MavenResource>[] futures = null;
 
-            @Override
-            public void onError(Throwable error) {
-                if (closed.compareAndExchange(false, true)) {
-                    return;
-                }
-                sink.onError(error);
+        for (int i = 0; i < len; i++) {
+            MavenRepository repository = repos.get(i);
+            CompletableFuture<MavenResource> cf = repository.getResource(path, executor);
+            if (cf.isDone() && !cf.isCancelled() && !cf.isCompletedExceptionally()) {
+                return cf; // Return early to avoid scheduling too many sync tasks
             }
-
-            @Override
-            public void nextItem(MavenResource item) {
-                hadItem.set(true);
-                if (closed.get()) {
-                    return;
-                }
-                try {
-                    sink.nextItem(item);
-                } catch (Exception e) {
-                    sink.onError(e);
-                }
+            if (futures == null) {
+                @SuppressWarnings("unchecked")
+                CompletableFuture<MavenResource>[] hack = new CompletableFuture[len]; // I'd rather not supress unchecked warnings for the whole method, so we have this small hack to supress it only for this assignment
+                futures = hack;
             }
-
-            @Override
-            public void onComplete() {
-                if (closed.compareAndExchange(false, true)) {
-                    return;
-                }
-                if (hadItem.get()) {
-                    sink.onComplete();
-                } else {
-                    sink.onError(new IOException("No repository declared resource \"" + path + "\"").fillInStackTrace());
-                }
-            }
-        });
-        boolean empty = true;
-        for (MavenRepository repository : repositories) {
-            empty = false;
-            repository.getResource(path, executor, multiplexer.newDelegateParent());
+            futures[i] = cf;
         }
-        if (empty) {
+
+        if (futures == null) {
             throw new ConfusedResolverException("Resolver has no repository it can fetch resources from");
         }
+
+        return new MultiCompleteableFuture<>(futures);
     }
 
     public void getVersions(String groupId, String artifactId, Executor executor, ObjectSink<VersionCatalogue> sink) {
         String mavenMetadataPath = groupId.replace('.', '/') + '/' + artifactId + "/maven-metadata.xml";
 
-        getResource(mavenMetadataPath, executor, new ObjectSink<MavenResource>() {
-
-            private final AtomicBoolean errored = new AtomicBoolean();
-
-            @Override
-            public void onError(Throwable error) {
-                if (errored.getAndSet(true)) {
-                    return;
-                }
-                errored.set(true);
-                sink.onError(error);
+        CompletableFuture<MavenResource> mavenMetadataFuture =  getResource(mavenMetadataPath, executor);
+        mavenMetadataFuture.exceptionally(ex -> {
+            sink.onError(ex);
+            return null;
+        });
+        mavenMetadataFuture.thenAccept(item -> {
+            VersionCatalogue catalogue;
+            try (InputStream is = Files.newInputStream(item.getPath())) {
+                catalogue = new VersionCatalogue(is);
+            } catch (Exception e) {
+                sink.onError(e);
+                return;
             }
-
-            @Override
-            public void nextItem(MavenResource item) {
-                if (errored.get()) {
-                    return;
-                }
-                VersionCatalogue catalogue;
-                try (InputStream is = Files.newInputStream(item.getPath())) {
-                    catalogue = new VersionCatalogue(is);
-                } catch (Exception e) {
-                    onError(e);
-                    return;
-                }
-                sink.nextItem(catalogue);
-            }
-
-            @Override
-            public void onComplete() {
-                if (errored.get()) {
-                    return;
-                }
-                sink.onComplete();
-            }
+            sink.nextItem(catalogue);
+            sink.onComplete();
         });
     }
 
@@ -167,38 +127,23 @@ public class MavenResolver {
         if (gav.version().getOriginText().equals("${version.shrinkwrap_descriptors}")) {
             throw new IllegalStateException();
         }
+        CompletableFuture<MavenResource> resource;
         if (gav.version().getOriginText().toLowerCase(Locale.ROOT).endsWith("-snapshot")) {
-            downloadSnapshot(gav, classifier, extension, executor, sink);
+            resource = downloadSnapshot(gav, classifier, extension, executor);
         } else {
-            downloadSimple(gav, classifier, extension, executor, new ObjectSink<MavenResource>() {
-
-                private boolean hadItem = false;
-
-                @Override
-                public void onError(Throwable error) {
-                    if (hadItem) {
-                        sink.onError(error);
-                    } else {
-                        downloadSnapshot(gav, classifier, extension, executor, sink);
-                    }
-                }
-
-                @Override
-                public void nextItem(MavenResource item) {
-                    hadItem = true;
-                    sink.nextItem(item);
-                }
-
-                @Override
-                public void onComplete() {
-                    if (hadItem) {
-                        sink.onComplete();
-                    } else {
-                        downloadSnapshot(gav, classifier, extension, executor, sink);
-                    }
-                }
+            resource = ConcurrencyUtil.configureFallback(downloadSimple(gav, classifier, extension, executor), () -> {
+                return downloadSnapshot(gav, classifier, extension, executor);
             });
         }
+
+        resource.exceptionally(ex -> {
+            sink.onError(ex);
+            return null;
+        });
+        resource.thenAccept(item -> {
+            sink.nextItem(item);
+            sink.onComplete();
+        });
     }
 
     private void downloadParentPoms(Element parentElement, Executor executor, ObjectSink<Map.Entry<GAV, Document>> sink) {
@@ -1017,71 +962,48 @@ public class MavenResolver {
         });
     }
 
-    private void downloadSimple(GAV gav, String classifier, String extension, Executor executor, ObjectSink<MavenResource> sink) {
+    private CompletableFuture<MavenResource> downloadSimple(GAV gav, String classifier, String extension, Executor executor) {
         String basePath = gav.group().replace('.', '/') + '/' + gav.artifact() + '/' + gav.version().getOriginText() + '/';
         String path = basePath + gav.artifact() + '-' + gav.version().getOriginText();
         if (classifier != null) {
             path += '-' + classifier;
         }
         path += '.' + extension;
-        getResource(path, executor, sink);
+        return getResource(path, executor);
     }
 
-    private void downloadSnapshot(GAV gav, String classifier, String extension, Executor executor, ObjectSink<MavenResource> sink) {
+    private CompletableFuture<MavenResource> downloadSnapshot(GAV gav, String classifier, String extension, Executor executor) {
         String basePath = gav.group().replace('.', '/') + '/' + gav.artifact() + '/' + gav.version().getOriginText() + '/';
-        getResource(basePath + "maven-metadata.xml", executor, new ObjectSink<MavenResource>() {
 
-            private AtomicBoolean recievedResource = new AtomicBoolean();
-
-            @Override
-            public void onError(Throwable error) {
-                if (!recievedResource.get()) {
-                    // Well then let's download it in a "stupid" manner
-                    downloadSimple(gav, classifier, extension, executor, sink);
-                }
-            }
-
-            @Override
-            public void nextItem(MavenResource item) {
-                if (recievedResource.get()) {
-                    return;
-                }
-                try {
-                    VersionCatalogue catalogue = new VersionCatalogue(Files.newInputStream(item.getPath()));
-                    for (SnapshotVersion snapshot : catalogue.snapshotVersions) {
-                        if (!snapshot.extension().equals(extension)) {
-                            continue;
-                        }
-                        if (snapshot.classifier() != null && !snapshot.classifier().equals(classifier)) {
-                            continue;
-                        }
-                        if (snapshot.classifier() == null && classifier != null) {
-                            continue;
-                        }
-                        if (recievedResource.compareAndExchange(false, true)) {
-                            return;
-                        }
-                        String path = basePath + gav.artifact() + '-' + snapshot.version();
-                        if (classifier != null) {
-                            path += '-' + classifier;
-                        }
-                        path += '.' + extension;
-                        getResource(path, executor, sink);
+        return ConcurrencyUtil.configureFallback(getResource(basePath + "maven-metadata.xml", executor).thenCompose(item -> {
+            try {
+                VersionCatalogue catalogue = new VersionCatalogue(Files.newInputStream(item.getPath()));
+                for (SnapshotVersion snapshot : catalogue.snapshotVersions) {
+                    if (!snapshot.extension().equals(extension)) {
+                        continue;
                     }
-                } catch (Exception e) {
-                    e.printStackTrace();
-                    onError(e);
-                    return;
+                    if (snapshot.classifier() != null && !snapshot.classifier().equals(classifier)) {
+                        continue;
+                    }
+                    if (snapshot.classifier() == null && classifier != null) {
+                        continue;
+                    }
+                    String path = basePath + gav.artifact() + '-' + snapshot.version();
+                    if (classifier != null) {
+                        path += '-' + classifier;
+                    }
+                    path += '.' + extension;
+                    return getResource(path, executor);
                 }
-            }
-
-            @Override
-            public void onComplete() {
-                if (!recievedResource.get()) {
-                    // Well then let's download it in a "stupid" manner
-                    downloadSimple(gav, classifier, extension, executor, sink);
+                throw new IllegalStateException("Unable to find snapshot version");
+            } catch (Exception e) {
+                if (e instanceof RuntimeException) {
+                    throw (RuntimeException) e;
                 }
+                throw new RuntimeException(e);
             }
+        }), () -> {
+            return downloadSimple(gav, classifier, extension, executor);
         });
     }
 }

@@ -7,10 +7,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.DigestInputStream;
 import java.security.MessageDigest;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 
-import de.geolykt.mavenresolver.misc.ObjectSink;
-import de.geolykt.mavenresolver.misc.SinkMultiplexer;
+import de.geolykt.mavenresolver.misc.ConcurrencyUtil;
 
 public class URIMavenRepository implements MavenRepository {
 
@@ -113,27 +113,9 @@ public class URIMavenRepository implements MavenRepository {
     }
 
     @Override
-    public final void getResource(String path, Executor executor, ObjectSink<MavenResource> sink) {
-        executor.execute(() -> {
-            BaseMavenResource resource;
-            try {
-                resource = new BaseMavenResource(getResource0(path, true));
-            } catch (Exception e) {
-                sink.onError(e);
-                return;
-            }
-            try {
-                if (resource.path.toString().equals("testcache/paper/org/hibernate/hibernate-validator/5.4.2.Final/hibernate-validator-5.4.2.Final.pom")) {
-                    System.err.println("DEBUG!"); // TODO DEBUG
-                }
-                sink.nextItem(resource);
-                sink.onComplete();
-            } catch (Exception e) {
-                if (sink instanceof SinkMultiplexer) {
-                    e.printStackTrace();
-                }
-                sink.onError(e);
-            }
-        });
+    public CompletableFuture<MavenResource> getResource(String path, Executor executor) {
+        return ConcurrencyUtil.schedule(() -> {
+            return new BaseMavenResource(getResource0(path, true));
+        }, executor);
     }
 }
