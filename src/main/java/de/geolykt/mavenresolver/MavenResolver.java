@@ -46,6 +46,13 @@ public class MavenResolver {
     private final List<MavenRepository> repositories = new CopyOnWriteArrayList<>();
     private final ConcurrentMap<GAV, DependencyContainerNode> depdenencyCache = new ConcurrentHashMap<>();
 
+    /**
+     * Whether to pretend that dependencies with the "test" scope did not exist. This may significantly improve lookup speeds,
+     * while in most cases not having any significant drawbacks due to the fact that usually you'd not want to resolve
+     * the artifacts a dependency uses to test itself.
+     */
+    public boolean ignoreTestDependencies = true;
+
     public MavenResolver() {
         this(null);
     }
@@ -290,6 +297,10 @@ public class MavenResolver {
             classifier = applyPlaceholders(classifier, placeholders);
             type = applyPlaceholders(type, placeholders);
 
+            if (ignoreTestDependencies && scope != null && scope.equalsIgnoreCase("test")) {
+                continue;
+            }
+
             DependencyNode dep = node.getOrCreateDependency(group, artifactId, classifier, type);
 
             if (version != null) {
@@ -494,7 +505,7 @@ public class MavenResolver {
                                     });
                                 }
                             });
-                        } // FIXME Compute placeholders
+                        }
                     }
 
                     @Override
