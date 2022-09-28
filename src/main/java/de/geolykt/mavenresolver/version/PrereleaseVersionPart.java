@@ -22,7 +22,7 @@ final class PrereleaseVersionPart implements MavenVersionPart {
             return -1; // Qualifiers are always "lesser" than numbers
         }
         if (o instanceof QualifierVersionPart) {
-            return 1; // Pre-release version parts are always more recent than qualifiers
+            return -1; // Pre-release version parts are always less recent than qualifiers
         }
         if (o instanceof PrereleaseVersionPart other) {
             if (other.prefixCodepoint != this.prefixCodepoint) {

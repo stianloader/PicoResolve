@@ -18,7 +18,7 @@ final class QualifierVersionPart implements MavenVersionPart {
             return -1; // Qualifiers are always less "recent" than numbers
         }
         if (o instanceof PrereleaseVersionPart) {
-            return -1; // Pre-release version parts are always more recent than qualifiers
+            return 1; // Pre-release version parts are always less recent than qualifiers
         }
         if (o instanceof QualifierVersionPart other) {
             if (other.prefixCodepoint != this.prefixCodepoint) {

@@ -14,6 +14,21 @@ public class MavenVersionTest {
     }
 
     @Test
+    public void testQualifierPreference() {
+        assertFalse(isNewer("1.0-aaa", "1.0-aab"));
+        assertTrue(isNewer("1.0-aab", "1.0-aaa"));
+
+        assertFalse(isNewer("1.0-alpha", "1.0-aaa"));
+        assertTrue(isNewer("1.0-aaa", "1.0-alpha"));
+
+        assertTrue(isNewer("1.0.alpha", "1.0-aaa"));
+        assertFalse(isNewer("1.0-aaa", "1.0.alpha"));
+
+        assertFalse(isNewer("1.0-alpha", "1.0.aaa"));
+        assertTrue(isNewer("1.0.aaa", "1.0-alpha"));
+    }
+
+    @Test
     public void testMavenPreferenceInterop() {
         // Based on examples provided by https://maven.apache.org/pom.html#Version_Order_Specification
         assertFalse(isNewer("1.0-rc", "1.0-cr"));
