@@ -26,6 +26,9 @@ public class MavenVersionTest {
 
         assertFalse(isNewer("1.0-alpha", "1.0.aaa"));
         assertTrue(isNewer("1.0.aaa", "1.0-alpha"));
+
+        assertFalse(isNewer("1.0", "1.0.aaa"));
+        assertTrue(isNewer("1.0.aaa", "1.0"));
     }
 
     @Test

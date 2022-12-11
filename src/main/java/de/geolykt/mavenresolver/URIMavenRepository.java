@@ -1,7 +1,9 @@
 package de.geolykt.mavenresolver;
 
 import java.io.IOException;
+import java.net.HttpURLConnection;
 import java.net.URI;
+import java.net.URLConnection;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -34,18 +36,13 @@ public class URIMavenRepository implements MavenRepository {
     }
 
     private final URI base;
+    private final String id;
     private final Path cacheFolder;
 
-    public URIMavenRepository(Path cacheFolder, URI base) {
+    public URIMavenRepository(String id, Path cache, URI base) {
         this.base = base;
-        this.cacheFolder = cacheFolder;
-        if (Files.notExists(cacheFolder)) {
-            try {
-                Files.createDirectories(cacheFolder);
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-        }
+        this.cacheFolder = cache; // TODO remove that argument
+        this.id = id;
     }
 
     private static String toHexHash(byte[] hash) {
@@ -72,7 +69,11 @@ public class URIMavenRepository implements MavenRepository {
             System.out.println("Downloading " + resolved);
             Files.createDirectories(cachePath.getParent());
             if (checkChecksums) {
-                DigestInputStream din = new DigestInputStream(resolved.toURL().openStream(), MessageDigest.getInstance("SHA-1"));
+                URLConnection connection = resolved.toURL().openConnection();
+                if (connection instanceof HttpURLConnection httpUrlConn && (httpUrlConn.getResponseCode() / 100) != 2) {
+                    throw new IOException("Query for " + connection.getURL() + " returned with a response code of " + httpUrlConn.getResponseCode() + " ( " + httpUrlConn.getResponseMessage() + ")");
+                }
+                DigestInputStream din = new DigestInputStream(connection.getInputStream(), MessageDigest.getInstance("SHA-1"));
                 Files.copy(din, cachePath);
                 try {
                     Path checksumFile = getResource0(path + ".sha1", false);
@@ -87,7 +88,11 @@ public class URIMavenRepository implements MavenRepository {
                     throw e;
                 }
             } else {
-                Files.copy(resolved.toURL().openStream(), cachePath);
+                URLConnection connection = resolved.toURL().openConnection();
+                if (connection instanceof HttpURLConnection httpUrlConn && (httpUrlConn.getResponseCode() / 100) != 2) {
+                    throw new IOException("Query for " + connection.getURL() + " returned with a response code of " + httpUrlConn.getResponseCode() + " ( " + httpUrlConn.getResponseMessage() + ")");
+                }
+                Files.copy(connection.getInputStream(), cachePath);
             }
             if (!Files.exists(cachePath)) {
                 Files.writeString(cachePath, "nofile/" + String.valueOf(System.currentTimeMillis()), StandardCharsets.UTF_8);
@@ -117,5 +122,20 @@ public class URIMavenRepository implements MavenRepository {
         return ConcurrencyUtil.schedule(() -> {
             return new BaseMavenResource(getResource0(path, true));
         }, executor);
+    }
+
+    @Override
+    public String getRepositoryId() {
+        return this.id;
+    }
+
+    @Override
+    public String getPlaintextURL() {
+        return this.base.toString();
+    }
+
+    @Override
+    public long getUpdateIntervall() {
+        return 24 * 60 * 60 * 1000; // Once every day should be enough
     }
 }

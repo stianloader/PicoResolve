@@ -18,9 +18,9 @@ public class DownloaderTest {
 
     @Test
     public void doTest() {
-        MavenResolver resolver = new MavenResolver()
-                .addRepository(new URIMavenRepository(Paths.get("testcache"), URI.create("https://repo1.maven.org/maven2/")))
-                .addRepository(new URIMavenRepository(Paths.get("testcache"), URI.create("https://papermc.io/repo/repository/maven-public/")));
+        MavenResolver resolver = new MavenResolver(Paths.get("testmvnlocal"))
+                .addRepository(new URIMavenRepository("central", Paths.get("testcache"), URI.create("https://repo1.maven.org/maven2/")))
+                .addRepository(new URIMavenRepository("paper", Paths.get("testcache"), URI.create("https://papermc.io/repo/repository/maven-public/")));
 
         Semaphore lock = new Semaphore(1);
         lock.acquireUninterruptibly();

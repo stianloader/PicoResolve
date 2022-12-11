@@ -3,6 +3,7 @@ package de.geolykt.mavenresolver;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -30,12 +31,10 @@ import de.geolykt.mavenresolver.DependencyContainerNode.DependencyNode;
 import de.geolykt.mavenresolver.misc.ChildElementIterable;
 import de.geolykt.mavenresolver.misc.ConcurrencyUtil;
 import de.geolykt.mavenresolver.misc.ConfusedResolverException;
-import de.geolykt.mavenresolver.misc.MultiCompleteableFuture;
 import de.geolykt.mavenresolver.misc.ObjectSink;
 import de.geolykt.mavenresolver.version.MavenVersion;
 import de.geolykt.mavenresolver.version.VersionCatalogue;
 import de.geolykt.mavenresolver.version.VersionCatalogue.SnapshotVersion;
-
 import de.geolykt.mavenresolver.version.VersionRange;
 
 public class MavenResolver {
@@ -43,7 +42,7 @@ public class MavenResolver {
     // TODO test tree resolving capabilities with https://repo1.maven.org/maven2/org/alfasoftware/astra/2.1.1/astra-2.1.1.pom
     // TODO cache VersionCatalogue objects
     // TODO cache poms
-    private final List<MavenRepository> repositories = new CopyOnWriteArrayList<>();
+    private final DownloadNegotiator negotiator;
     private final ConcurrentMap<GAV, DependencyContainerNode> depdenencyCache = new ConcurrentHashMap<>();
 
     /**
@@ -53,14 +52,15 @@ public class MavenResolver {
      */
     public boolean ignoreTestDependencies = true;
 
-    public MavenResolver() {
-        this(null);
+    public MavenResolver(Path mavenLocal) {
+        this(mavenLocal, null);
     }
 
-    public MavenResolver(Collection<MavenRepository> repos) {
+    public MavenResolver(Path mavenLocal, Collection<MavenRepository> repos) {
         if (repos != null) {
             addRepositories(repos);
         }
+        this.negotiator = new LocalDownloadNegotiator(mavenLocal);
     }
 
     public MavenResolver addRepositories(Collection<MavenRepository> repos) {
@@ -69,9 +69,7 @@ public class MavenResolver {
     }
 
     public MavenResolver addRepository(MavenRepository repo) {
-        if (!repositories.contains(repo)) {
-            repositories.add(repo);
-        }
+        this.negotiator.addRepository(repo);
         return this;
     }
 
@@ -83,30 +81,7 @@ public class MavenResolver {
     }
 
     public CompletableFuture<MavenResource> getResource(String path, Executor executor) {
-        final List<MavenRepository> repos = this.repositories;
-        final int len = repos.size();
-
-        CompletableFuture<MavenResource>[] futures = null;
-
-        for (int i = 0; i < len; i++) {
-            MavenRepository repository = repos.get(i);
-            CompletableFuture<MavenResource> cf = repository.getResource(path, executor);
-            if (cf.isDone() && !cf.isCancelled() && !cf.isCompletedExceptionally()) {
-                return cf; // Return early to avoid scheduling too many sync tasks
-            }
-            if (futures == null) {
-                @SuppressWarnings("unchecked")
-                CompletableFuture<MavenResource>[] hack = new CompletableFuture[len]; // I'd rather not supress unchecked warnings for the whole method, so we have this small hack to supress it only for this assignment
-                futures = hack;
-            }
-            futures[i] = cf;
-        }
-
-        if (futures == null) {
-            throw new ConfusedResolverException("Resolver has no repository it can fetch resources from");
-        }
-
-        return new MultiCompleteableFuture<>(futures);
+        return this.negotiator.resolve(path, executor);
     }
 
     public void getVersions(String groupId, String artifactId, Executor executor, ObjectSink<VersionCatalogue> sink) {
