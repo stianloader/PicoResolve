@@ -1,4 +1,4 @@
-package de.geolykt.mavenresolver;
+package de.geolykt.mavenresolver.repo;
 
 import java.io.IOException;
 import java.net.HttpURLConnection;
@@ -12,7 +12,7 @@ import java.security.MessageDigest;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 
-import de.geolykt.mavenresolver.misc.ConcurrencyUtil;
+import de.geolykt.mavenresolver.internal.ConcurrencyUtil;
 
 public class URIMavenRepository implements MavenRepository {
 

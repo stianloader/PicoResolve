@@ -28,13 +28,17 @@ import org.dom4j.Element;
 import org.dom4j.io.SAXReader;
 
 import de.geolykt.mavenresolver.DependencyContainerNode.DependencyNode;
-import de.geolykt.mavenresolver.misc.ChildElementIterable;
-import de.geolykt.mavenresolver.misc.ConcurrencyUtil;
-import de.geolykt.mavenresolver.misc.ConfusedResolverException;
-import de.geolykt.mavenresolver.misc.ObjectSink;
+import de.geolykt.mavenresolver.internal.ChildElementIterable;
+import de.geolykt.mavenresolver.internal.ConcurrencyUtil;
+import de.geolykt.mavenresolver.internal.ConfusedResolverException;
+import de.geolykt.mavenresolver.internal.ObjectSink;
+import de.geolykt.mavenresolver.internal.meta.VersionCatalogue;
+import de.geolykt.mavenresolver.internal.meta.VersionCatalogue.SnapshotVersion;
+import de.geolykt.mavenresolver.repo.DownloadNegotiator;
+import de.geolykt.mavenresolver.repo.LocalDownloadNegotiator;
+import de.geolykt.mavenresolver.repo.MavenRepository;
+import de.geolykt.mavenresolver.repo.MavenResource;
 import de.geolykt.mavenresolver.version.MavenVersion;
-import de.geolykt.mavenresolver.version.VersionCatalogue;
-import de.geolykt.mavenresolver.version.VersionCatalogue.SnapshotVersion;
 import de.geolykt.mavenresolver.version.VersionRange;
 
 public class MavenResolver {

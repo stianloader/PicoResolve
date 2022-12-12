@@ -9,9 +9,9 @@ import java.util.concurrent.Semaphore;
 import org.junit.jupiter.api.Test;
 
 import de.geolykt.mavenresolver.MavenResolver;
-import de.geolykt.mavenresolver.URIMavenRepository;
-import de.geolykt.mavenresolver.misc.ObjectSink;
-import de.geolykt.mavenresolver.version.VersionCatalogue;
+import de.geolykt.mavenresolver.internal.ObjectSink;
+import de.geolykt.mavenresolver.internal.meta.VersionCatalogue;
+import de.geolykt.mavenresolver.repo.URIMavenRepository;
 
 public class ResolverTest {
 

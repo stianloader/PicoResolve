@@ -1,6 +1,6 @@
 package de.geolykt.mavenresolver.version;
 
-import de.geolykt.mavenresolver.misc.ConfusedResolverException;
+import de.geolykt.mavenresolver.internal.ConfusedResolverException;
 
 final class QualifierVersionPart implements MavenVersionPart {
 

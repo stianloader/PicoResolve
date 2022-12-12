@@ -1,4 +1,4 @@
-package de.geolykt.mavenresolver.misc;
+package de.geolykt.mavenresolver.internal;
 
 /**
  * Exception that is thrown when something just doesn't add up.

@@ -1,4 +1,4 @@
-package de.geolykt.mavenresolver;
+package de.geolykt.mavenresolver.repo;
 
 import java.nio.file.Path;
 

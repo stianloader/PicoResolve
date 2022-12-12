@@ -9,9 +9,9 @@ import org.junit.jupiter.api.Test;
 
 import de.geolykt.mavenresolver.GAV;
 import de.geolykt.mavenresolver.MavenResolver;
-import de.geolykt.mavenresolver.MavenResource;
-import de.geolykt.mavenresolver.URIMavenRepository;
-import de.geolykt.mavenresolver.misc.ObjectSink;
+import de.geolykt.mavenresolver.internal.ObjectSink;
+import de.geolykt.mavenresolver.repo.MavenResource;
+import de.geolykt.mavenresolver.repo.URIMavenRepository;
 import de.geolykt.mavenresolver.version.MavenVersion;
 
 public class DownloaderTest {

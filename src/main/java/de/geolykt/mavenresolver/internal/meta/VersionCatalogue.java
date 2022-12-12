@@ -1,4 +1,4 @@
-package de.geolykt.mavenresolver.version;
+package de.geolykt.mavenresolver.internal.meta;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -12,8 +12,9 @@ import org.dom4j.Element;
 import org.dom4j.io.SAXReader;
 import org.xml.sax.SAXException;
 
-import de.geolykt.mavenresolver.misc.ChildElementIterable;
-import de.geolykt.mavenresolver.misc.ConfusedResolverException;
+import de.geolykt.mavenresolver.internal.ChildElementIterable;
+import de.geolykt.mavenresolver.internal.ConfusedResolverException;
+import de.geolykt.mavenresolver.version.MavenVersion;
 
 public class VersionCatalogue {
 

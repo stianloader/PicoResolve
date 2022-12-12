@@ -3,7 +3,7 @@ package de.geolykt.mavenresolver.version;
 import java.util.HashMap;
 import java.util.Map;
 
-import de.geolykt.mavenresolver.misc.ConfusedResolverException;
+import de.geolykt.mavenresolver.internal.ConfusedResolverException;
 
 final class PrereleaseVersionPart implements MavenVersionPart {
 

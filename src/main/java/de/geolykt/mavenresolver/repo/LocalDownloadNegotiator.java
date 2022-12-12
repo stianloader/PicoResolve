@@ -1,4 +1,4 @@
-package de.geolykt.mavenresolver;
+package de.geolykt.mavenresolver.repo;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -14,9 +14,9 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 
-import de.geolykt.mavenresolver.misc.ConfusedResolverException;
-import de.geolykt.mavenresolver.misc.InternalLastUpdatedFile;
-import de.geolykt.mavenresolver.misc.MultiCompleteableFuture;
+import de.geolykt.mavenresolver.internal.ConfusedResolverException;
+import de.geolykt.mavenresolver.internal.InternalLastUpdatedFile;
+import de.geolykt.mavenresolver.internal.MultiCompleteableFuture;
 
 public class LocalDownloadNegotiator implements DownloadNegotiator {
     private final Path mavenLocal;

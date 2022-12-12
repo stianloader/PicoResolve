@@ -1,4 +1,4 @@
-package de.geolykt.mavenresolver.misc;
+package de.geolykt.mavenresolver.internal;
 
 import java.util.Iterator;
 

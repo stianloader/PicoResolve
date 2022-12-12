@@ -7,7 +7,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
 
-import de.geolykt.mavenresolver.misc.ConfusedResolverException;
+import de.geolykt.mavenresolver.internal.ConfusedResolverException;
 
 /**
  * Object that represents a version that maven can understand and compare.
