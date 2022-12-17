@@ -37,7 +37,7 @@ import de.geolykt.mavenresolver.internal.meta.VersionCatalogue.SnapshotVersion;
 import de.geolykt.mavenresolver.repo.DownloadNegotiator;
 import de.geolykt.mavenresolver.repo.LocalDownloadNegotiator;
 import de.geolykt.mavenresolver.repo.MavenRepository;
-import de.geolykt.mavenresolver.repo.MavenResource;
+import de.geolykt.mavenresolver.repo.RepositoryAttachedValue;
 import de.geolykt.mavenresolver.version.MavenVersion;
 import de.geolykt.mavenresolver.version.VersionRange;
 
@@ -84,21 +84,21 @@ public class MavenResolver {
         return this;
     }
 
-    public CompletableFuture<MavenResource> getResource(String path, Executor executor) {
+    public CompletableFuture<RepositoryAttachedValue<Path>> getResource(String path, Executor executor) {
         return this.negotiator.resolve(path, executor);
     }
 
-    public void getVersions(String groupId, String artifactId, Executor executor, ObjectSink<VersionCatalogue> sink) {
+    private void getVersions(String groupId, String artifactId, Executor executor, ObjectSink<VersionCatalogue> sink) {
         String mavenMetadataPath = groupId.replace('.', '/') + '/' + artifactId + "/maven-metadata.xml";
 
-        CompletableFuture<MavenResource> mavenMetadataFuture =  getResource(mavenMetadataPath, executor);
+        CompletableFuture<RepositoryAttachedValue<Path>> mavenMetadataFuture =  getResource(mavenMetadataPath, executor);
         mavenMetadataFuture.exceptionally(ex -> {
             sink.onError(ex);
             return null;
         });
         mavenMetadataFuture.thenAccept(item -> {
             VersionCatalogue catalogue;
-            try (InputStream is = Files.newInputStream(item.getPath())) {
+            try (InputStream is = Files.newInputStream(item.getValue())) {
                 catalogue = new VersionCatalogue(is);
             } catch (Exception e) {
                 sink.onError(e);
@@ -109,11 +109,11 @@ public class MavenResolver {
         });
     }
 
-    public void download(GAV gav, String classifier, String extension, Executor executor, ObjectSink<MavenResource> sink) {
+    public void download(GAV gav, String classifier, String extension, Executor executor, ObjectSink<RepositoryAttachedValue<Path>> sink) {
         if (gav.version().getOriginText().equals("${version.shrinkwrap_descriptors}")) {
             throw new IllegalStateException();
         }
-        CompletableFuture<MavenResource> resource;
+        CompletableFuture<RepositoryAttachedValue<Path>> resource;
         if (gav.version().getOriginText().toLowerCase(Locale.ROOT).endsWith("-snapshot")) {
             resource = downloadSnapshot(gav, classifier, extension, executor);
         } else {
@@ -142,7 +142,7 @@ public class MavenResolver {
         String version = parentElement.elementText("version");
 
         GAV gav = new GAV(group, artifactId, MavenVersion.parse(version));
-        download(gav, null, "pom", executor, new ObjectSink<MavenResource>() {
+        download(gav, null, "pom", executor, new ObjectSink<RepositoryAttachedValue<Path>>() {
 
             private volatile boolean hadElements = false;
 
@@ -154,7 +154,7 @@ public class MavenResolver {
             }
 
             @Override
-            public void nextItem(MavenResource item) {
+            public void nextItem(RepositoryAttachedValue<Path> item) {
                 hadElements = true;
                 try {
                     SAXReader reader = new SAXReader();
@@ -162,7 +162,7 @@ public class MavenResolver {
                     reader.setFeature("http://xml.org/sax/features/external-general-entities", false);
                     reader.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
                     Document xmlDoc;
-                    try (InputStream is = Files.newInputStream(item.getPath())) {
+                    try (InputStream is = Files.newInputStream(item.getValue())) {
                         xmlDoc = reader.read(is);
                     }
                     Element project = xmlDoc.getRootElement();
@@ -819,7 +819,7 @@ public class MavenResolver {
     }
 
     private void downloadPom(GAV gav, Executor executor, ObjectSink<Document> sink) {
-        download(gav, null, "pom", executor, new ObjectSink<MavenResource>() {
+        download(gav, null, "pom", executor, new ObjectSink<RepositoryAttachedValue<Path>>() {
 
             private volatile boolean processedElement = false;
 
@@ -831,7 +831,7 @@ public class MavenResolver {
             }
 
             @Override
-            public void nextItem(MavenResource item) {
+            public void nextItem(RepositoryAttachedValue<Path> item) {
                 if (processedElement) {
                     return;
                 }
@@ -843,7 +843,7 @@ public class MavenResolver {
                     reader.setFeature("http://xml.org/sax/features/external-general-entities", false);
                     reader.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
                     Document xmlDoc;
-                    try (InputStream is = Files.newInputStream(item.getPath())) {
+                    try (InputStream is = Files.newInputStream(item.getValue())) {
                         xmlDoc = reader.read(is);
                     }
                     xmlDoc.getRootElement().normalize();
@@ -871,7 +871,7 @@ public class MavenResolver {
             sink.onComplete();
             return;
         }
-        download(gav, null, "pom", executor, new ObjectSink<MavenResource>() {
+        download(gav, null, "pom", executor, new ObjectSink<RepositoryAttachedValue<Path>>() {
 
             private volatile boolean processedElement = false;
 
@@ -883,7 +883,7 @@ public class MavenResolver {
             }
 
             @Override
-            public void nextItem(MavenResource item) {
+            public void nextItem(RepositoryAttachedValue<Path> item) {
                 processedElement = true;
                 DependencyContainerNode cached = depdenencyCache.get(gav);
                 if (cached != null) {
@@ -898,7 +898,7 @@ public class MavenResolver {
                     reader.setFeature("http://xml.org/sax/features/external-general-entities", false);
                     reader.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
                     Document xmlDoc;
-                    try (InputStream is = Files.newInputStream(item.getPath())) {
+                    try (InputStream is = Files.newInputStream(item.getValue())) {
                         xmlDoc = reader.read(is);
                     }
                     Element project = xmlDoc.getRootElement();
@@ -952,7 +952,7 @@ public class MavenResolver {
         });
     }
 
-    private CompletableFuture<MavenResource> downloadSimple(GAV gav, String classifier, String extension, Executor executor) {
+    private CompletableFuture<RepositoryAttachedValue<Path>> downloadSimple(GAV gav, String classifier, String extension, Executor executor) {
         String basePath = gav.group().replace('.', '/') + '/' + gav.artifact() + '/' + gav.version().getOriginText() + '/';
         String path = basePath + gav.artifact() + '-' + gav.version().getOriginText();
         if (classifier != null) {
@@ -962,12 +962,12 @@ public class MavenResolver {
         return getResource(path, executor);
     }
 
-    private CompletableFuture<MavenResource> downloadSnapshot(GAV gav, String classifier, String extension, Executor executor) {
+    private CompletableFuture<RepositoryAttachedValue<Path>> downloadSnapshot(GAV gav, String classifier, String extension, Executor executor) {
         String basePath = gav.group().replace('.', '/') + '/' + gav.artifact() + '/' + gav.version().getOriginText() + '/';
 
         return ConcurrencyUtil.configureFallback(getResource(basePath + "maven-metadata.xml", executor).thenCompose(item -> {
             try {
-                VersionCatalogue catalogue = new VersionCatalogue(Files.newInputStream(item.getPath()));
+                VersionCatalogue catalogue = new VersionCatalogue(Files.newInputStream(item.getValue()));
                 for (SnapshotVersion snapshot : catalogue.snapshotVersions) {
                     if (!snapshot.extension().equals(extension)) {
                         continue;

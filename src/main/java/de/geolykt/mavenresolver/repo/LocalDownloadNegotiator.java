@@ -15,8 +15,8 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 
 import de.geolykt.mavenresolver.internal.ConfusedResolverException;
-import de.geolykt.mavenresolver.internal.InternalLastUpdatedFile;
 import de.geolykt.mavenresolver.internal.MultiCompleteableFuture;
+import de.geolykt.mavenresolver.internal.meta.LastUpdatedFile;
 
 public class LocalDownloadNegotiator implements DownloadNegotiator {
     private final Path mavenLocal;
@@ -54,16 +54,16 @@ public class LocalDownloadNegotiator implements DownloadNegotiator {
         return this;
     }
 
-    public CompletableFuture<MavenResource> resolve(String path, Executor executor) {
+    public CompletableFuture<RepositoryAttachedValue<Path>> resolve(String path, Executor executor) {
         // TODO checksums, somehow
         Path localFile = this.mavenLocal.resolve(path);
         Path lastUpdateFile = this.mavenLocal.resolve(path + ".lastUpdated");
-        InternalLastUpdatedFile lastUpdates;
+        LastUpdatedFile lastUpdates;
 
         if (Files.exists(lastUpdateFile)) {
-            lastUpdates = InternalLastUpdatedFile.parse(lastUpdateFile);
+            lastUpdates = LastUpdatedFile.parse(lastUpdateFile);
         } else {
-            lastUpdates = new InternalLastUpdatedFile();
+            lastUpdates = new LastUpdatedFile();
         }
 
         FileChannel resolverLockChannel;
@@ -94,7 +94,7 @@ public class LocalDownloadNegotiator implements DownloadNegotiator {
 
         // FIXME we need to somehow remember which repositories stored what so even if it does not need to be updated
         // it is still traceable where the origin on the resource lies at.
-        List<CompletableFuture<MavenResource>> updatingRepositories = new ArrayList<>();
+        List<CompletableFuture<RepositoryAttachedValue<byte[]>>> updatingRepositories = new ArrayList<>();
         for (MavenRepository remote : this.remoteRepositories) {
             Long lastUpdate = lastUpdates.getLastFetchTime(remote.getPlaintextURL());
             if (lastUpdate == null || (System.currentTimeMillis() - lastUpdate) > remote.getUpdateIntervall()) {
@@ -103,7 +103,7 @@ public class LocalDownloadNegotiator implements DownloadNegotiator {
                 // That being said this takes a bit more effort so we don't actually do it
                 // TODO return early for sync futures
                 updatingRepositories.add(remote.getResource(path, executor));
-                lastUpdates.updateEntry(remote.getPlaintextURL(), "", System.currentTimeMillis());
+                lastUpdates.updateEntrySuccess(path, System.currentTimeMillis());
             }
         }
 
@@ -116,15 +116,15 @@ public class LocalDownloadNegotiator implements DownloadNegotiator {
             } catch (Exception ignored) {
             }
             if (Files.exists(localFile)) {
-                return CompletableFuture.completedFuture(getFlatfileResource(localFile));
+                return CompletableFuture.completedFuture(new RepositoryAttachedValue<>(localFile, null));
             } else {
                 return CompletableFuture.failedFuture(new ConfusedResolverException("Resolver has no repository it can fetch resources from").fillInStackTrace());
             }
         }
-        CompletableFuture<MavenResource> combined = new MultiCompleteableFuture<>(updatingRepositories);
-        CompletableFuture<MavenResource> reformed = combined.thenApply((in) -> {
+        CompletableFuture<RepositoryAttachedValue<byte[]>> combined = new MultiCompleteableFuture<>(updatingRepositories);
+        CompletableFuture<RepositoryAttachedValue<Path>> reformed = combined.thenApply((in) -> {
             try {
-                Files.copy(in.getPath(), localFile);
+                Files.write(localFile, in.getValue(), StandardOpenOption.TRUNCATE_EXISTING);
             } catch (IOException e) {
                 throw new UncheckedIOException("Unable to copy file", e);
             }
@@ -133,7 +133,7 @@ public class LocalDownloadNegotiator implements DownloadNegotiator {
                 resolverLock.channel().close(); // Let's not have memory leaks
             } catch (Exception ignored) {
             }
-            return getDownloadedResource(in.getSourceRepository(), localFile);
+            return new RepositoryAttachedValue<>(localFile, in.getRepository());
         }).exceptionally(t -> {
             try {
                 resolverLock.release();
@@ -141,38 +141,10 @@ public class LocalDownloadNegotiator implements DownloadNegotiator {
             } catch (Exception ignored) {
             }
             if (Files.exists(localFile)) {
-                return getFlatfileResource(localFile);
+                return new RepositoryAttachedValue<>(localFile, null);
             }
             return null;
         });
         return reformed;
-    }
-
-    private static MavenResource getFlatfileResource(Path path) {
-        return new MavenResource() {
-            @Override
-            public MavenRepository getSourceRepository() {
-                // TODO Auto-generated method stub
-                return null;
-            }
-            @Override
-            public Path getPath() {
-                return path;
-            }
-        };
-    }
-
-    private static MavenResource getDownloadedResource(MavenRepository source, Path path) {
-        return new MavenResource() {
-            @Override
-            public MavenRepository getSourceRepository() {
-                return source;
-            }
-
-            @Override
-            public Path getPath() {
-                return path;
-            }
-        };
     }
 }

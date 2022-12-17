@@ -5,7 +5,7 @@ import java.util.concurrent.Executor;
 
 public interface MavenRepository {
 
-    CompletableFuture<MavenResource> getResource(String path, Executor executor);
+    CompletableFuture<RepositoryAttachedValue<byte[]>> getResource(String path, Executor executor);
     String getRepositoryId();
     String getPlaintextURL();
     long getUpdateIntervall();
