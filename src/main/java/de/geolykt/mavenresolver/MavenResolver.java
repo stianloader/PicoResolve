@@ -34,8 +34,8 @@ import de.geolykt.mavenresolver.internal.ConfusedResolverException;
 import de.geolykt.mavenresolver.internal.ObjectSink;
 import de.geolykt.mavenresolver.internal.meta.VersionCatalogue;
 import de.geolykt.mavenresolver.internal.meta.VersionCatalogue.SnapshotVersion;
-import de.geolykt.mavenresolver.repo.DownloadNegotiator;
-import de.geolykt.mavenresolver.repo.LocalDownloadNegotiator;
+import de.geolykt.mavenresolver.repo.RepositoryNegotiatior;
+import de.geolykt.mavenresolver.repo.MavenLocalRepositoryNegotiator;
 import de.geolykt.mavenresolver.repo.MavenRepository;
 import de.geolykt.mavenresolver.repo.RepositoryAttachedValue;
 import de.geolykt.mavenresolver.version.MavenVersion;
@@ -46,7 +46,7 @@ public class MavenResolver {
     // TODO test tree resolving capabilities with https://repo1.maven.org/maven2/org/alfasoftware/astra/2.1.1/astra-2.1.1.pom
     // TODO cache VersionCatalogue objects
     // TODO cache poms
-    private final DownloadNegotiator negotiator;
+    private final RepositoryNegotiatior negotiator;
     private final ConcurrentMap<GAV, DependencyContainerNode> depdenencyCache = new ConcurrentHashMap<>();
 
     /**
@@ -64,7 +64,7 @@ public class MavenResolver {
         if (repos != null) {
             addRepositories(repos);
         }
-        this.negotiator = new LocalDownloadNegotiator(mavenLocal);
+        this.negotiator = new MavenLocalRepositoryNegotiator(mavenLocal);
     }
 
     public MavenResolver addRepositories(Collection<MavenRepository> repos) {
@@ -84,14 +84,10 @@ public class MavenResolver {
         return this;
     }
 
-    public CompletableFuture<RepositoryAttachedValue<Path>> getResource(String path, Executor executor) {
-        return this.negotiator.resolve(path, executor);
-    }
-
     private void getVersions(String groupId, String artifactId, Executor executor, ObjectSink<VersionCatalogue> sink) {
         String mavenMetadataPath = groupId.replace('.', '/') + '/' + artifactId + "/maven-metadata.xml";
 
-        CompletableFuture<RepositoryAttachedValue<Path>> mavenMetadataFuture =  getResource(mavenMetadataPath, executor);
+        CompletableFuture<RepositoryAttachedValue<Path>> mavenMetadataFuture =  this.negotiator.resolveMavenMeta(mavenMetadataPath, executor);
         mavenMetadataFuture.exceptionally(ex -> {
             sink.onError(ex);
             return null;
@@ -959,13 +955,13 @@ public class MavenResolver {
             path += '-' + classifier;
         }
         path += '.' + extension;
-        return getResource(path, executor);
+        return this.negotiator.resolveStandard(path, executor);
     }
 
     private CompletableFuture<RepositoryAttachedValue<Path>> downloadSnapshot(GAV gav, String classifier, String extension, Executor executor) {
         String basePath = gav.group().replace('.', '/') + '/' + gav.artifact() + '/' + gav.version().getOriginText() + '/';
 
-        return ConcurrencyUtil.configureFallback(getResource(basePath + "maven-metadata.xml", executor).thenCompose(item -> {
+        return ConcurrencyUtil.configureFallback(this.negotiator.resolveMavenMeta(basePath + "maven-metadata.xml", executor).thenCompose(item -> {
             try {
                 VersionCatalogue catalogue = new VersionCatalogue(Files.newInputStream(item.getValue()));
                 for (SnapshotVersion snapshot : catalogue.snapshotVersions) {
@@ -983,7 +979,7 @@ public class MavenResolver {
                         path += '-' + classifier;
                     }
                     path += '.' + extension;
-                    return getResource(path, executor);
+                    return this.negotiator.resolveStandard(path, executor);
                 }
                 throw new IllegalStateException("Unable to find snapshot version");
             } catch (Exception e) {
