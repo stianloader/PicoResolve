@@ -16,6 +16,7 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 
+import de.geolykt.mavenresolver.internal.ConcurrencyUtil;
 import de.geolykt.mavenresolver.internal.MultiCompletableFuture;
 import de.geolykt.mavenresolver.internal.StronglyMultiCompletableFuture;
 import de.geolykt.mavenresolver.internal.meta.LastUpdatedFile;
@@ -126,7 +127,8 @@ public class MavenLocalRepositoryNegotiator implements RepositoryNegotiatior {
 
         List<CompletableFuture<RepositoryAttachedValue<byte[]>>> futures = new ArrayList<>();
         for (MavenRepository remote : candidateRepositories) {
-            CompletableFuture<RepositoryAttachedValue<byte[]>> future = remote.getResource(path, executor).exceptionally((ex) -> {
+            CompletableFuture<RepositoryAttachedValue<byte[]>> future = remote.getResource(path, executor);
+            future.exceptionally((ex) -> {
                 lastUpdated.updateEntryErrored(remote.getPlaintextURL(), "", System.currentTimeMillis());
                 return null;
             });
@@ -140,12 +142,12 @@ public class MavenLocalRepositoryNegotiator implements RepositoryNegotiatior {
         }
         CompletableFuture<RepositoryAttachedValue<byte[]>> combined = new MultiCompletableFuture<>(futures);
 
-        CompletableFuture<RepositoryAttachedValue<Path>> ret = combined.thenApply((rav) -> {
+        CompletableFuture<RepositoryAttachedValue<Path>> ret = ConcurrencyUtil.exceptionally(combined.thenApply((rav) -> {
             write(rav.getValue(), localFile);
             repoProps.setSourceRepository(localFile.getFileName().toString(), rav.getRepository().getRepositoryId());
             repoProps.tryWrite(remoteRepos);
             return new RepositoryAttachedValue<>(localFile, rav.getRepository());
-        }).exceptionally((ex) -> {
+        }), (ex) -> {
             if (Files.exists(localFile)) {
                 return new RepositoryAttachedValue<>(localFile, null);
             }
@@ -198,7 +200,10 @@ public class MavenLocalRepositoryNegotiator implements RepositoryNegotiatior {
 
     @Override
     public CompletableFuture<List<RepositoryAttachedValue<Path>>> resolveMavenMeta(String path, Executor executor) {
-        Path parentDirectory = this.mavenLocal.resolve(path + "/..");
+        Path parentDirectory = this.mavenLocal.resolve(path).getParent();
+        if (parentDirectory == null) {
+            throw new IllegalStateException("\"path\" might only consist of a slash!");
+        }
         Path resolverProperties = parentDirectory.resolve("resolver-status.properties");
 
         if (!path.endsWith("/maven-metadata.xml")) {
@@ -234,14 +239,17 @@ public class MavenLocalRepositoryNegotiator implements RepositoryNegotiatior {
                     continue;
                 }
             }
-            CompletableFuture<RepositoryAttachedValue<Path>> future = remote.getResource(path, executor).exceptionally((ex) -> {
-                resolverStatus.updateEntryErrored(remote.getRepositoryId(), "", System.currentTimeMillis());
-                return null;
-            }).thenApply((rav) -> {
-                resolverStatus.updateEntrySuccess(remote.getRepositoryId(), System.currentTimeMillis());
-                write(rav.getValue(), localFile);
-                return new RepositoryAttachedValue<>(localFile, rav.getRepository());
-            });
+            CompletableFuture<RepositoryAttachedValue<Path>> future = ConcurrencyUtil.exceptionally(
+                remote.getResource(path, executor),
+                (ex) -> {
+                    resolverStatus.updateEntryErrored(remote.getRepositoryId(), "", System.currentTimeMillis());
+                    return null;
+                }).thenApply((rav) -> {
+                    resolverStatus.updateEntrySuccess(remote.getRepositoryId(), System.currentTimeMillis());
+                    write(rav.getValue(), localFile);
+                    return new RepositoryAttachedValue<>(localFile, rav.getRepository());
+                }
+            );
             futures.add(future);
         }
 

@@ -1,6 +1,5 @@
 package de.geolykt.mavenresolver;
 
-import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -34,10 +33,10 @@ import de.geolykt.mavenresolver.internal.ConfusedResolverException;
 import de.geolykt.mavenresolver.internal.ObjectSink;
 import de.geolykt.mavenresolver.internal.meta.VersionCatalogue;
 import de.geolykt.mavenresolver.internal.meta.VersionCatalogue.SnapshotVersion;
-import de.geolykt.mavenresolver.repo.RepositoryNegotiatior;
 import de.geolykt.mavenresolver.repo.MavenLocalRepositoryNegotiator;
 import de.geolykt.mavenresolver.repo.MavenRepository;
 import de.geolykt.mavenresolver.repo.RepositoryAttachedValue;
+import de.geolykt.mavenresolver.repo.RepositoryNegotiatior;
 import de.geolykt.mavenresolver.version.MavenVersion;
 import de.geolykt.mavenresolver.version.VersionRange;
 
@@ -109,7 +108,7 @@ public class MavenResolver {
         });
     }
 
-    public void download(GAV gav, String classifier, String extension, Executor executor, ObjectSink<RepositoryAttachedValue<Path>> sink) {
+    public CompletableFuture<RepositoryAttachedValue<Path>> download(GAV gav, String classifier, String extension, Executor executor) {
         if (gav.version().getOriginText().equals("${version.shrinkwrap_descriptors}")) {
             throw new IllegalStateException();
         }
@@ -122,14 +121,7 @@ public class MavenResolver {
             });
         }
 
-        resource.exceptionally(ex -> {
-            sink.onError(ex);
-            return null;
-        });
-        resource.thenAccept(item -> {
-            sink.nextItem(item);
-            sink.onComplete();
-        });
+        return resource;
     }
 
     private void downloadParentPoms(Element parentElement, Executor executor, ObjectSink<Map.Entry<GAV, Document>> sink) {
@@ -142,52 +134,34 @@ public class MavenResolver {
         String version = parentElement.elementText("version");
 
         GAV gav = new GAV(group, artifactId, MavenVersion.parse(version));
-        download(gav, null, "pom", executor, new ObjectSink<RepositoryAttachedValue<Path>>() {
+        download(gav, null, "pom", executor).thenAccept((pathRAV) -> {
+            try {
+                SAXReader reader = new SAXReader();
+                reader.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false);
+                reader.setFeature("http://xml.org/sax/features/external-general-entities", false);
+                reader.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
+                Document xmlDoc;
+                try (InputStream is = Files.newInputStream(pathRAV.getValue())) {
+                    xmlDoc = reader.read(is);
+                }
+                Element project = xmlDoc.getRootElement();
+                project.normalize();
 
-            private volatile boolean hadElements = false;
+                sink.nextItem(new AbstractMap.SimpleImmutableEntry<>(gav, xmlDoc));
 
-            @Override
-            public void onError(Throwable error) {
-                if (!hadElements) {
+                Element parent = project.element("parent");
+
+                if (parent == null) {
                     sink.onComplete();
+                    return;
+                } else {
+                    downloadParentPoms(parent, executor, sink);
                 }
-            }
-
-            @Override
-            public void nextItem(RepositoryAttachedValue<Path> item) {
-                hadElements = true;
-                try {
-                    SAXReader reader = new SAXReader();
-                    reader.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false);
-                    reader.setFeature("http://xml.org/sax/features/external-general-entities", false);
-                    reader.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
-                    Document xmlDoc;
-                    try (InputStream is = Files.newInputStream(item.getValue())) {
-                        xmlDoc = reader.read(is);
-                    }
-                    Element project = xmlDoc.getRootElement();
-                    project.normalize();
-
-                    sink.nextItem(new AbstractMap.SimpleImmutableEntry<>(gav, xmlDoc));
-
-                    Element parent = project.element("parent");
-
-                    if (parent == null) {
-                        sink.onComplete();
-                        return;
-                    } else {
-                        downloadParentPoms(parent, executor, sink);
-                    }
-                } catch (Exception e) {
-                    sink.onError(e);
+            } catch (Exception e) {
+                if (e instanceof RuntimeException) {
+                    throw (RuntimeException) e;
                 }
-            }
-
-            @Override
-            public void onComplete() {
-                if (!hadElements) {
-                    sink.onComplete();
-                }
+                throw new RuntimeException(e);
             }
         });
     }
@@ -357,18 +331,20 @@ public class MavenResolver {
         }
     }
 
-    private void fillInDependencies(GAV gav, Executor executor, Document pom, List<Map.Entry<GAV, Document>> parentPoms, DependencyContainerNode node, Runnable onDone) {
+    private CompletableFuture<Void> fillInDependencies(GAV gav, Executor executor, Document pom, List<Map.Entry<GAV, Document>> parentPoms, DependencyContainerNode node) {
         Map<String, String> placeholders = new HashMap<>();
         ConcurrentMap<VersionlessDependency, VersionRange> dependencyVersions = new ConcurrentHashMap<>();
         computePlaceholders(gav, pom, parentPoms, placeholders);
 
+        CompletableFuture<Void> cf = new CompletableFuture<>();
         fillInDependencyManagement(gav, executor, pom, parentPoms, 0, dependencyVersions, () -> {
             Element dependencies = pom.getRootElement().element("dependencies");
             if (dependencies != null) {
                 readDependencies(dependencies, placeholders, dependencyVersions, node);
             }
-            onDone.run();
+            cf.complete(null);
         });
+        return cf;
     }
 
     private void handleDependencyManagementDeps(Executor executor, Element dependencyBlock, Map<String, String> placeholders, Map<VersionlessDependency, VersionRange> out, Runnable onDone) {
@@ -406,90 +382,70 @@ public class MavenResolver {
                 }
                 GAV importedGAV = new GAV(group, artifactId, mversion);
                 scheduledTasks.incrementAndGet();
-                downloadPom(importedGAV, executor, new ObjectSink<Document>() {
-
-                    private volatile boolean resolved = false;
-
-                    @Override
-                    public void onError(Throwable error) {
-                        error.printStackTrace(); // TODO do
+                downloadPom(importedGAV, executor).thenAccept((item) -> {
+                    Element project = item.getRootElement();
+                    Element dependencyManagement = project.element("dependencyManagement");
+                    if (dependencyManagement == null) {
+                        if (scheduledTasks.decrementAndGet() == 0 && guard.compareAndSet(false, true)) {
+                            onDone.run();
+                        }
+                        return; // What a waste of CPU time
+                    }
+                    Element dependencies = dependencyManagement.element("dependencies");
+                    if (dependencies == null) {
+                        if (scheduledTasks.decrementAndGet() == 0 && guard.compareAndSet(false, true)) {
+                            onDone.run();
+                        }
+                        return;
                     }
 
-                    @Override
-                    public void nextItem(Document item) {
-                        if (resolved) {
-                            return;
-                        }
-                        resolved = true;
-                        Element project = item.getRootElement();
-                        Element dependencyManagement = project.element("dependencyManagement");
-                        if (dependencyManagement == null) {
+                    Element parent = project.element("parent");
+                    if (parent == null) {
+                        Map<String, String> placeholdersImported = new HashMap<>();
+                        computePlaceholders(importedGAV, item, Collections.emptyList(), placeholdersImported);
+                        handleDependencyManagementDeps(executor, dependencies, placeholdersImported, out, () -> {
                             if (scheduledTasks.decrementAndGet() == 0 && guard.compareAndSet(false, true)) {
                                 onDone.run();
                             }
-                            return; // What a waste of CPU time
-                        }
-                        Element dependencies = dependencyManagement.element("dependencies");
-                        if (dependencies == null) {
-                            if (scheduledTasks.decrementAndGet() == 0 && guard.compareAndSet(false, true)) {
-                                onDone.run();
-                            }
-                            return;
-                        }
+                        });
+                    } else {
+                        downloadParentPoms(parent, executor, new ObjectSink<>() {
 
-                        Element parent = project.element("parent");
-                        if (parent == null) {
-                            Map<String, String> placeholdersImported = new HashMap<>();
-                            computePlaceholders(importedGAV, item, Collections.emptyList(), placeholdersImported);
-                            handleDependencyManagementDeps(executor, dependencies, placeholdersImported, out, () -> {
+                            private volatile boolean done;
+                            private List<Entry<GAV, Document>> parentPoms = new ArrayList<>();
+
+                            @Override
+                            public void onError(Throwable error) {
+                                if (done) {
+                                    return;
+                                }
+                                done = true;
+                                // TODO find a way to not absorb the error here
                                 if (scheduledTasks.decrementAndGet() == 0 && guard.compareAndSet(false, true)) {
                                     onDone.run();
                                 }
-                            });
-                        } else {
-                            downloadParentPoms(parent, executor, new ObjectSink<>() {
+                            }
 
-                                private volatile boolean done;
-                                private List<Entry<GAV, Document>> parentPoms = new ArrayList<>();
+                            @Override
+                            public void nextItem(Entry<GAV, Document> item) {
+                                parentPoms.add(item);
+                            }
 
-                                @Override
-                                public void onError(Throwable error) {
-                                    if (done) {
-                                        return;
-                                    }
-                                    done = true;
-                                    // TODO find a way to not absorb the error here
+                            @Override
+                            public void onComplete() {
+                                if (done) {
+                                    return;
+                                }
+                                done = true;
+                                Map<String, String> placeholdersImported = new HashMap<>();
+                                computePlaceholders(importedGAV, item, parentPoms, placeholdersImported);
+                                handleDependencyManagementDeps(executor, dependencies, placeholdersImported, out, () -> {
                                     if (scheduledTasks.decrementAndGet() == 0 && guard.compareAndSet(false, true)) {
                                         onDone.run();
                                     }
-                                }
-
-                                @Override
-                                public void nextItem(Entry<GAV, Document> item) {
-                                    parentPoms.add(item);
-                                }
-
-                                @Override
-                                public void onComplete() {
-                                    if (done) {
-                                        return;
-                                    }
-                                    done = true;
-                                    Map<String, String> placeholdersImported = new HashMap<>();
-                                    computePlaceholders(importedGAV, item, parentPoms, placeholdersImported);
-                                    handleDependencyManagementDeps(executor, dependencies, placeholdersImported, out, () -> {
-                                        if (scheduledTasks.decrementAndGet() == 0 && guard.compareAndSet(false, true)) {
-                                            onDone.run();
-                                        }
-                                    });
-                                }
-                            });
-                        }
-                    }
-
-                    @Override
-                    public void onComplete() {
-                        // Ignore
+                                });
+                            }
+                        });
                     }
                 });
             } else {
@@ -614,49 +570,32 @@ public class MavenResolver {
     }
 
     public void generateDependencyTree(GAV artifact, String classifier, String type, Executor executor, ObjectSink<DependencyTree> sink) {
-        getDependencies(artifact, executor, new ObjectSink<DependencyContainerNode>() {
+        getDependencies(artifact, executor).thenAccept((rootNode) -> {
+            ConcurrentMap<VersionlessDependency, MavenVersion> neogitationCache = new ConcurrentHashMap<>();
+            generateDepenents(Collections.singletonList(rootNode), neogitationCache, executor, new ObjectSink<DependencyContainerNode>() {
 
-            private DependencyContainerNode rootNode;
+                List<DependencyContainerNode> dependencies = new ArrayList<>();
 
-            @Override
-            public void onError(Throwable error) {
-                sink.onError(error);
-            }
-
-            @Override
-            public void nextItem(DependencyContainerNode item) {
-                rootNode = item;
-            }
-
-            @Override
-            public void onComplete() {
-                if (rootNode == null) {
-                    sink.onError(new IOException("Unable to find POM for " + artifact).fillInStackTrace());
-                } else {
-                    ConcurrentMap<VersionlessDependency, MavenVersion> neogitationCache = new ConcurrentHashMap<>();
-                    generateDepenents(Collections.singletonList(rootNode), neogitationCache, executor, new ObjectSink<DependencyContainerNode>() {
-
-                        List<DependencyContainerNode> dependencies = new ArrayList<>();
-
-                        @Override
-                        public void onError(Throwable error) {
-                            sink.onError(error);
-                        }
-
-                        @Override
-                        public void nextItem(DependencyContainerNode item) {
-                            dependencies.add(item);
-                        }
-
-                        @Override
-                        public void onComplete() {
-                            dependencies.add(rootNode);
-                            sink.nextItem(assembleExcludingTree(rootNode, classifier, type, dependencies, new HashMap<>()));
-                            sink.onComplete();
-                        }
-                    });
+                @Override
+                public void onError(Throwable error) {
+                    sink.onError(error);
                 }
-            }
+
+                @Override
+                public void nextItem(DependencyContainerNode item) {
+                    dependencies.add(item);
+                }
+
+                @Override
+                public void onComplete() {
+                    dependencies.add(rootNode);
+                    sink.nextItem(assembleExcludingTree(rootNode, classifier, type, dependencies, new HashMap<>()));
+                    sink.onComplete();
+                }
+            });
+        }).exceptionally((t) -> {
+            sink.onError(t);
+            return null;
         });
     }
 
@@ -786,170 +725,125 @@ public class MavenResolver {
                 if (dependencyGAV.group().startsWith("${pom.groupId}")) {
                     throw new IllegalStateException("This is nonsense! " + dependencyGAV);
                 }
-                getDependencies(dependencyGAV, executor, new ObjectSink<DependencyContainerNode>() {
-
-                    @Override
-                    public void onError(Throwable error) {
-                        error.printStackTrace();
-                        if (resolveGAVs.remove(dependencyGAV) && resolveGAVs.isEmpty() && concurrencyLock.compareAndSet(false, true)) {
-                            callbackDone.run();
-                        }
+                CompletableFuture<DependencyContainerNode> subdependencyFuture = getDependencies(dependencyGAV, executor);
+                subdependencyFuture.exceptionally((t) -> {
+                    t.printStackTrace();
+                    if (resolveGAVs.remove(dependencyGAV) && resolveGAVs.isEmpty() && concurrencyLock.compareAndSet(false, true)) {
+                        callbackDone.run();
                     }
-
-                    @Override
-                    public void nextItem(DependencyContainerNode item) {
-                        if (item == null) {
-                            throw new NullPointerException("Argument \"item\" is null!");
-                        }
-                        if (concurrencyLock.get()) {
-                            throw new IllegalStateException("Already completed!");
-                        }
-                        subDeps.add(item);
+                    return null;
+                });
+                subdependencyFuture.thenAccept((item) -> {
+                    if (item == null) {
+                        throw new NullPointerException("Argument \"item\" is null!");
                     }
-
-                    @Override
-                    public void onComplete() {
-                        if (resolveGAVs.remove(dependencyGAV) && resolveGAVs.isEmpty() && concurrencyLock.compareAndSet(false, true)) {
-                            callbackDone.run();
-                        }
+                    if (concurrencyLock.get()) {
+                        throw new IllegalStateException("Already completed!");
+                    }
+                    subDeps.add(item);
+                    if (resolveGAVs.remove(dependencyGAV) && resolveGAVs.isEmpty() && concurrencyLock.compareAndSet(false, true)) {
+                        callbackDone.run();
                     }
                 });
             }
         });
     }
 
-    private void downloadPom(GAV gav, Executor executor, ObjectSink<Document> sink) {
-        download(gav, null, "pom", executor, new ObjectSink<RepositoryAttachedValue<Path>>() {
-
-            private volatile boolean processedElement = false;
-
-            @Override
-            public void onError(Throwable error) {
-                if (!processedElement) {
-                    sink.onError(error);
+    private CompletableFuture<Document> downloadPom(GAV gav, Executor executor) {
+        return download(gav, null, "pom", executor).thenApply((pathRAV) -> {
+            try {
+                SAXReader reader = new SAXReader();
+                reader.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false);
+                reader.setFeature("http://xml.org/sax/features/external-general-entities", false);
+                reader.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
+                Document xmlDoc;
+                try (InputStream is = Files.newInputStream(pathRAV.getValue())) {
+                    xmlDoc = reader.read(is);
                 }
-            }
+                xmlDoc.getRootElement().normalize();
 
-            @Override
-            public void nextItem(RepositoryAttachedValue<Path> item) {
-                if (processedElement) {
-                    return;
-                }
-                processedElement = true;
-
-                try {
-                    SAXReader reader = new SAXReader();
-                    reader.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false);
-                    reader.setFeature("http://xml.org/sax/features/external-general-entities", false);
-                    reader.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
-                    Document xmlDoc;
-                    try (InputStream is = Files.newInputStream(item.getValue())) {
-                        xmlDoc = reader.read(is);
-                    }
-                    xmlDoc.getRootElement().normalize();
-
-                    sink.nextItem(xmlDoc);
-                } catch (Exception e) {
-                    sink.onError(e);
-                }
-            }
-
-            @Override
-            public void onComplete() {
-                if (processedElement) {
-                    return;
-                }
-                sink.onComplete();
+                return xmlDoc;
+            } catch (Exception e) {
+                throw new RuntimeException(e);
             }
         });
     }
 
-    private void getDependencies(GAV gav, Executor executor, ObjectSink<DependencyContainerNode> sink) {
+    private CompletableFuture<DependencyContainerNode> getDependencies(GAV gav, Executor executor) {
         DependencyContainerNode cached = depdenencyCache.get(gav);
         if (cached != null) {
-            sink.nextItem(cached);
-            sink.onComplete();
-            return;
+            return CompletableFuture.completedFuture(cached);
         }
-        download(gav, null, "pom", executor, new ObjectSink<RepositoryAttachedValue<Path>>() {
+        CompletableFuture<DependencyContainerNode> future = new CompletableFuture<>();
+        CompletableFuture<RepositoryAttachedValue<Path>> rootParentPom = download(gav, null, "pom", executor);
+        rootParentPom.exceptionally((t) -> {
+            future.completeExceptionally(t);
+            return null;
+        });
+        rootParentPom.thenAccept((RepositoryAttachedValue<Path> pathRAV) -> {
 
-            private volatile boolean processedElement = false;
-
-            @Override
-            public void onError(Throwable error) {
-                if (!processedElement) {
-                    sink.onError(error);
-                }
+            DependencyContainerNode newCachedNode = depdenencyCache.get(gav);
+            if (newCachedNode != null) {
+                future.complete(newCachedNode);
+                return;
             }
 
-            @Override
-            public void nextItem(RepositoryAttachedValue<Path> item) {
-                processedElement = true;
-                DependencyContainerNode cached = depdenencyCache.get(gav);
-                if (cached != null) {
-                    sink.nextItem(cached);
-                    sink.onComplete();
-                    return;
+            try {
+                SAXReader reader = new SAXReader();
+                reader.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false);
+                reader.setFeature("http://xml.org/sax/features/external-general-entities", false);
+                reader.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
+                Document xmlDoc;
+                try (InputStream is = Files.newInputStream(pathRAV.getValue())) {
+                    xmlDoc = reader.read(is);
                 }
+                Element project = xmlDoc.getRootElement();
+                project.normalize();
 
-                try {
-                    SAXReader reader = new SAXReader();
-                    reader.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false);
-                    reader.setFeature("http://xml.org/sax/features/external-general-entities", false);
-                    reader.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
-                    Document xmlDoc;
-                    try (InputStream is = Files.newInputStream(item.getValue())) {
-                        xmlDoc = reader.read(is);
-                    }
-                    Element project = xmlDoc.getRootElement();
-                    project.normalize();
+                Element parent = project.element("parent");
+                if (parent == null) {
+                    DependencyContainerNode dependencyContainerNode = new DependencyContainerNode(gav);
+                    fillInDependencies(gav, executor, xmlDoc, Collections.emptyList(), dependencyContainerNode).thenAccept((ignoreVoid) -> {
+                        DependencyContainerNode c2 = depdenencyCache.putIfAbsent(gav, dependencyContainerNode);
+                        if (c2 == null) {
+                            future.complete(dependencyContainerNode);
+                        } else {
+                            future.complete(c2);
+                        }
+                    });
+                } else {
+                    List<Map.Entry<GAV, Document>> parents = new CopyOnWriteArrayList<>();
+                    downloadParentPoms(parent, executor, new ObjectSink<Map.Entry<GAV, Document>>() {
 
-                    Element parent = project.element("parent");
-                    if (parent == null) {
-                        DependencyContainerNode dependencyContainerNode = new DependencyContainerNode(gav);
-                        fillInDependencies(gav, executor, xmlDoc, Collections.emptyList(), dependencyContainerNode, () -> {
-                            DependencyContainerNode c2 = depdenencyCache.putIfAbsent(gav, dependencyContainerNode);
-                            sink.nextItem(c2 == null ? dependencyContainerNode : c2);
-                            sink.onComplete();
-                        });
-                    } else {
-                        List<Map.Entry<GAV, Document>> parents = new CopyOnWriteArrayList<>();
-                        downloadParentPoms(parent, executor, new ObjectSink<Map.Entry<GAV, Document>>() {
+                        @Override
+                        public void onError(Throwable error) {
+                            future.completeExceptionally(error);
+                        }
 
-                            @Override
-                            public void onError(Throwable error) {
-                                sink.onError(error);
-                            }
+                        @Override
+                        public void nextItem(Map.Entry<GAV, Document> item) {
+                            parents.add(item);
+                        }
 
-                            @Override
-                            public void nextItem(Map.Entry<GAV, Document> item) {
-                                parents.add(item);
-                            }
-
-                            @Override
-                            public void onComplete() {
-                                DependencyContainerNode dependencyContainerNode = new DependencyContainerNode(gav);
-                                fillInDependencies(gav, executor, xmlDoc, parents, dependencyContainerNode, () -> {
-                                    DependencyContainerNode c2 = depdenencyCache.putIfAbsent(gav, dependencyContainerNode);
-                                    sink.nextItem(c2 == null ? dependencyContainerNode : c2);
-                                    sink.onComplete();
-                                });
-                            }
-                        });
-                    }
-                } catch (Exception e) {
-                    sink.onError(e);
+                        @Override
+                        public void onComplete() {
+                            DependencyContainerNode dependencyContainerNode = new DependencyContainerNode(gav);
+                            fillInDependencies(gav, executor, xmlDoc, parents, dependencyContainerNode).thenAccept((ignoreVoid) -> {
+                                DependencyContainerNode c2 = depdenencyCache.putIfAbsent(gav, dependencyContainerNode);
+                                if (c2 == null) {
+                                    future.complete(dependencyContainerNode);
+                                } else {
+                                    future.complete(c2);
+                                }
+                            });
+                        }
+                    });
                 }
-            }
-
-            @Override
-            public void onComplete() {
-                if (processedElement) {
-                    return;
-                }
-                sink.onComplete();
+            } catch (Throwable t) {
+                future.completeExceptionally(t);
             }
         });
+        return future;
     }
 
     private CompletableFuture<RepositoryAttachedValue<Path>> downloadSimple(GAV gav, String classifier, String extension, Executor executor) {
