@@ -87,20 +87,24 @@ public class MavenResolver {
     private void getVersions(String groupId, String artifactId, Executor executor, ObjectSink<VersionCatalogue> sink) {
         String mavenMetadataPath = groupId.replace('.', '/') + '/' + artifactId + "/maven-metadata.xml";
 
-        CompletableFuture<RepositoryAttachedValue<Path>> mavenMetadataFuture =  this.negotiator.resolveMavenMeta(mavenMetadataPath, executor);
+        CompletableFuture<List<RepositoryAttachedValue<Path>>> mavenMetadataFuture =  this.negotiator.resolveMavenMeta(mavenMetadataPath, executor);
         mavenMetadataFuture.exceptionally(ex -> {
             sink.onError(ex);
             return null;
         });
         mavenMetadataFuture.thenAccept(item -> {
-            VersionCatalogue catalogue;
-            try (InputStream is = Files.newInputStream(item.getValue())) {
-                catalogue = new VersionCatalogue(is);
-            } catch (Exception e) {
-                sink.onError(e);
-                return;
+            List<VersionCatalogue> catalogues = new ArrayList<>(item.size());
+            for (RepositoryAttachedValue<Path> rav : item) {
+                VersionCatalogue catalogue;
+                try (InputStream is = Files.newInputStream(rav.getValue())) {
+                    catalogue = new VersionCatalogue(is);
+                } catch (Exception e) {
+                    e.printStackTrace();
+                    continue;
+                }
+                catalogues.add(catalogue);
             }
-            sink.nextItem(catalogue);
+            sink.nextItem(VersionCatalogue.merge(catalogues));
             sink.onComplete();
         });
     }
@@ -962,32 +966,36 @@ public class MavenResolver {
         String basePath = gav.group().replace('.', '/') + '/' + gav.artifact() + '/' + gav.version().getOriginText() + '/';
 
         return ConcurrencyUtil.configureFallback(this.negotiator.resolveMavenMeta(basePath + "maven-metadata.xml", executor).thenCompose(item -> {
-            try {
-                VersionCatalogue catalogue = new VersionCatalogue(Files.newInputStream(item.getValue()));
-                for (SnapshotVersion snapshot : catalogue.snapshotVersions) {
-                    if (!snapshot.extension().equals(extension)) {
-                        continue;
-                    }
-                    if (snapshot.classifier() != null && !snapshot.classifier().equals(classifier)) {
-                        continue;
-                    }
-                    if (snapshot.classifier() == null && classifier != null) {
-                        continue;
-                    }
-                    String path = basePath + gav.artifact() + '-' + snapshot.version();
-                    if (classifier != null) {
-                        path += '-' + classifier;
-                    }
-                    path += '.' + extension;
-                    return this.negotiator.resolveStandard(path, executor);
+            VersionCatalogue merged;
+            List<VersionCatalogue> catalogues = new ArrayList<>();
+            for (RepositoryAttachedValue<Path> rav : item) {
+                try {
+                    VersionCatalogue catalogue = new VersionCatalogue(Files.newInputStream(rav.getValue()));
+                    catalogues.add(catalogue);
+                } catch (Exception e) {
+                    e.printStackTrace();
+                    continue;
                 }
-                throw new IllegalStateException("Unable to find snapshot version");
-            } catch (Exception e) {
-                if (e instanceof RuntimeException) {
-                    throw (RuntimeException) e;
-                }
-                throw new RuntimeException(e);
             }
+            merged = VersionCatalogue.merge(catalogues);
+            for (SnapshotVersion snapshot : merged.snapshotVersions) {
+                if (!snapshot.extension().equals(extension)) {
+                    continue;
+                }
+                if (snapshot.classifier() != null && !snapshot.classifier().equals(classifier)) {
+                    continue;
+                }
+                if (snapshot.classifier() == null && classifier != null) {
+                    continue;
+                }
+                String path = basePath + gav.artifact() + '-' + snapshot.version();
+                if (classifier != null) {
+                    path += '-' + classifier;
+                }
+                path += '.' + extension;
+                return this.negotiator.resolveStandard(path, executor);
+            }
+            throw new IllegalStateException("Unable to find snapshot version");
         }), () -> {
             return downloadSimple(gav, classifier, extension, executor);
         });

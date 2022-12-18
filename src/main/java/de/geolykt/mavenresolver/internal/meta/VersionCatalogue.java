@@ -5,6 +5,7 @@ import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 
 import org.dom4j.Document;
 import org.dom4j.DocumentException;
@@ -32,6 +33,10 @@ public class VersionCatalogue {
     public int lastUpdateHour;
     public int lastUpdateMinute;
     public int lastUpdateSecond;
+
+    private VersionCatalogue() {
+        // No-arguments constructor needed for the #merge method
+    }
 
     public VersionCatalogue(InputStream is) throws SAXException, DocumentException, IOException {
         SAXReader reader = new SAXReader();
@@ -131,5 +136,92 @@ public class VersionCatalogue {
                 }
             }
         }
+    }
+
+    public static VersionCatalogue merge(Iterable<VersionCatalogue> sources) {
+        VersionCatalogue merged = new VersionCatalogue();
+        for (VersionCatalogue source : sources) {
+            for (MavenVersion ver : source.releaseVersions) {
+                if (merged.releaseVersions.contains(ver)) {
+                    merged.releaseVersions.add(ver);
+                }
+            }
+            for (SnapshotVersion ver : source.snapshotVersions) {
+                SnapshotVersion conflict = null;
+                for (SnapshotVersion old : merged.snapshotVersions) {
+                    if (Objects.equals(old.classifier, ver.classifier)
+                            && old.extension.equals(ver.extension)) {
+                        conflict = old;
+                        break;
+                    }
+                }
+                if (conflict == null) {
+                    merged.snapshotVersions.add(ver);
+                } else {
+                    if (conflict.lastUpdated.compareTo(ver.lastUpdated) < 0) {
+                        // Conflict was updated at an earlier date
+                        merged.snapshotVersions.remove(conflict);
+                        merged.snapshotVersions.add(ver);
+                        continue;
+                    }
+                }
+            }
+            if (source.lastUpdateYear > merged.lastUpdateYear) {
+                merged.lastUpdateYear = source.lastUpdateYear;
+                merged.lastUpdateMonth = source.lastUpdateMonth;
+                merged.lastUpdateDay = source.lastUpdateDay;
+                merged.lastUpdateHour = source.lastUpdateHour;
+                merged.lastUpdateMinute = source.lastUpdateMinute;
+                merged.lastUpdateSecond = source.lastUpdateSecond;
+            } else if (source.lastUpdateYear < merged.lastUpdateYear) {
+                // Do nothing
+            } else if (source.lastUpdateMonth > merged.lastUpdateMonth) {
+                merged.lastUpdateMonth = source.lastUpdateMonth;
+                merged.lastUpdateDay = source.lastUpdateDay;
+                merged.lastUpdateHour = source.lastUpdateHour;
+                merged.lastUpdateMinute = source.lastUpdateMinute;
+                merged.lastUpdateSecond = source.lastUpdateSecond;
+            } else if (source.lastUpdateMonth < merged.lastUpdateMonth) {
+                // Do nothing
+            } else if (source.lastUpdateDay > merged.lastUpdateDay) {
+                merged.lastUpdateDay = source.lastUpdateDay;
+                merged.lastUpdateHour = source.lastUpdateHour;
+                merged.lastUpdateMinute = source.lastUpdateMinute;
+                merged.lastUpdateSecond = source.lastUpdateSecond;
+            } else if (source.lastUpdateDay < merged.lastUpdateDay) {
+                // Do nothing
+            } else if (source.lastUpdateHour > merged.lastUpdateHour) {
+                merged.lastUpdateHour = source.lastUpdateHour;
+                merged.lastUpdateMinute = source.lastUpdateMinute;
+                merged.lastUpdateSecond = source.lastUpdateSecond;
+            } else if (source.lastUpdateHour < merged.lastUpdateHour) {
+                // Do nothing
+            } else if (source.lastUpdateMinute > merged.lastUpdateMinute) {
+                merged.lastUpdateMinute = source.lastUpdateMinute;
+                merged.lastUpdateSecond = source.lastUpdateSecond;
+            } else if (source.lastUpdateMinute < merged.lastUpdateMinute) {
+                // Do nothing
+            } else if (source.lastUpdateSecond > merged.lastUpdateSecond) {
+                merged.lastUpdateSecond = source.lastUpdateSecond;
+            } else if (source.lastUpdateSecond < merged.lastUpdateSecond) {
+                // Do nothing
+            }
+
+            if (merged.latestVersion == null) {
+                merged.latestVersion = source.latestVersion;
+            } else if (source.latestVersion != null && source.latestVersion.isNewerThan(merged.latestVersion)) {
+                merged.latestVersion = source.latestVersion;
+            }
+
+            if (merged.releaseVersion == null) {
+                merged.releaseVersion = source.releaseVersion;
+            } else if (source.releaseVersion != null && source.releaseVersion.isNewerThan(merged.releaseVersion)) {
+                merged.releaseVersion = source.releaseVersion;
+            }
+        }
+
+        merged.lastUpdated = String.format("%04d%02d%02d%02d%02d%02d", merged.lastUpdateYear, merged.lastUpdateMonth,
+                merged.lastUpdateDay, merged.lastUpdateHour, merged.lastUpdateMinute, merged.lastUpdateSecond);
+        return merged;
     }
 }

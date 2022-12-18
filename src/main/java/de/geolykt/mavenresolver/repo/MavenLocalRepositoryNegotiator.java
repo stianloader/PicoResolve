@@ -16,7 +16,8 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 
-import de.geolykt.mavenresolver.internal.MultiCompleteableFuture;
+import de.geolykt.mavenresolver.internal.MultiCompletableFuture;
+import de.geolykt.mavenresolver.internal.StronglyMultiCompletableFuture;
 import de.geolykt.mavenresolver.internal.meta.LastUpdatedFile;
 import de.geolykt.mavenresolver.internal.meta.RemoteRepositoryProperties;
 import de.geolykt.mavenresolver.internal.meta.ResolverMetaStatus;
@@ -137,7 +138,7 @@ public class MavenLocalRepositoryNegotiator implements RepositoryNegotiatior {
                 break; // Let's note waste too much CPU time when running with a synchronous executor
             }
         }
-        CompletableFuture<RepositoryAttachedValue<byte[]>> combined = new MultiCompleteableFuture<>(futures);
+        CompletableFuture<RepositoryAttachedValue<byte[]>> combined = new MultiCompletableFuture<>(futures);
 
         CompletableFuture<RepositoryAttachedValue<Path>> ret = combined.thenApply((rav) -> {
             write(rav.getValue(), localFile);
@@ -195,15 +196,17 @@ public class MavenLocalRepositoryNegotiator implements RepositoryNegotiatior {
         }
     }
 
-    // FIXME This NEEDS to return all metadata files instead!
     @Override
-    public CompletableFuture<RepositoryAttachedValue<Path>> resolveMavenMeta(String path, Executor executor) {
+    public CompletableFuture<List<RepositoryAttachedValue<Path>>> resolveMavenMeta(String path, Executor executor) {
         Path parentDirectory = this.mavenLocal.resolve(path + "/..");
         Path resolverProperties = parentDirectory.resolve("resolver-status.properties");
 
         if (!path.endsWith("/maven-metadata.xml")) {
             throw new IllegalArgumentException("This method may not be used to resolve anything but maven-metadata.xml (although it may be in various folders). Instead \"" + path + "\" was used as an input.");
         }
+
+        List<CompletableFuture<RepositoryAttachedValue<Path>>> futures = new ArrayList<>();
+
         if (!Files.exists(parentDirectory)) {
             try {
                 Files.createDirectories(parentDirectory);
@@ -212,13 +215,11 @@ public class MavenLocalRepositoryNegotiator implements RepositoryNegotiatior {
         } else {
             Path mvnLocalMeta = parentDirectory.resolve("maven-metadata-local.xml");
             if (Files.exists(mvnLocalMeta)) {
-                return CompletableFuture.completedFuture(new RepositoryAttachedValue<>(mvnLocalMeta, null));
+                futures.add(CompletableFuture.completedFuture(new RepositoryAttachedValue<>(mvnLocalMeta, null)));
             }
         }
 
         ResolverMetaStatus resolverStatus = ResolverMetaStatus.tryParse(resolverProperties);
-
-        List<CompletableFuture<RepositoryAttachedValue<Path>>> futures = new ArrayList<>();
 
         for (MavenRepository remote : this.remoteRepositories) {
             Path localFile = parentDirectory.resolve("maven-metadata-" + remote.getRepositoryId() + ".xml");
@@ -229,7 +230,8 @@ public class MavenLocalRepositoryNegotiator implements RepositoryNegotiatior {
                     continue;
                 } else if (Files.exists(localFile)) {
                     // The cache is still valid - no need to fetch!
-                    return CompletableFuture.completedFuture(new RepositoryAttachedValue<>(localFile, remote));
+                    futures.add(CompletableFuture.completedFuture(new RepositoryAttachedValue<>(localFile, remote)));
+                    continue;
                 }
             }
             CompletableFuture<RepositoryAttachedValue<Path>> future = remote.getResource(path, executor).exceptionally((ex) -> {
@@ -247,7 +249,7 @@ public class MavenLocalRepositoryNegotiator implements RepositoryNegotiatior {
             return CompletableFuture.failedFuture(new IllegalStateException("RepositoryNegotiator has exhausted all available repositories").fillInStackTrace());
         }
 
-        CompletableFuture<RepositoryAttachedValue<Path>> ret = new MultiCompleteableFuture<>(futures);
+        CompletableFuture<List<RepositoryAttachedValue<Path>>> ret = new StronglyMultiCompletableFuture<>(futures);
         ret.thenRun(() -> {
             try {
                 resolverStatus.write(resolverProperties);

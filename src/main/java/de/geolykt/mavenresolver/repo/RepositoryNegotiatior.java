@@ -1,6 +1,7 @@
 package de.geolykt.mavenresolver.repo;
 
 import java.nio.file.Path;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 
@@ -42,7 +43,7 @@ public interface RepositoryNegotiatior {
     public CompletableFuture<RepositoryAttachedValue<Path>> resolveStandard(String path, Executor executor);
 
     /**
-     * Resolve a maven-metadata.xml file from the repositories and store it into a file.
+     * Resolve all relevant maven-metadata.xml files from the repositories and cache them into files.
      *
      * <p><ul>
      * <li>This method MUST throw directly if something else but a maven-metadata.xml is requested.</li>
@@ -64,13 +65,16 @@ public interface RepositoryNegotiatior {
      * MavenLocal stores metadata files a bit different to non-metadata files and therefore it makes sense
      * to separate the two methods.
      *
+     * <p>Furthermore it makes sense to basically merge all the maven-metadata.xml files instead
+     * of only fetching a single one.
+     *
      * @param path The path relative to the repository root where the file is located.
      * @param executor The executor with whom asynchronous operations should be performed.
      * @throws IllegalArgumentException If the requested file is not a maven-metadata.xml.
      * @return A {@link CompletableFuture} which upon non-exceptional {@link CompletableFuture#isDone() completion}
      * stores the path where the resolved file is stored locally.
      */
-    public CompletableFuture<RepositoryAttachedValue<Path>> resolveMavenMeta(String path, Executor executor);
+    public CompletableFuture<List<RepositoryAttachedValue<Path>>> resolveMavenMeta(String path, Executor executor);
 
     public RepositoryNegotiatior addRepository(MavenRepository repo);
 }
