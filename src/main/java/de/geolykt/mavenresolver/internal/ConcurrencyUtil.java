@@ -29,6 +29,10 @@ public class ConcurrencyUtil {
 
     public static <T> CompletableFuture<T> configureFallback(CompletableFuture<T> mains, Supplier<CompletableFuture<T>> fallback) {
         // TODO do not absorb the root exception
+        mains.exceptionally((t) -> {
+            t.printStackTrace();
+            return null;
+        });
         return mains.exceptionallyCompose((t) -> {
             return fallback.get();
         });

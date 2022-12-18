@@ -44,7 +44,7 @@ public class RemoteRepositoryProperties {
         String n = file + '>';
         return lines.stream()
                 .filter(e -> e.startsWith(n))
-                .map(e -> e.substring(file.length() + 1, e.lastIndexOf('=', file.length())))
+                .map(e -> e.substring(file.length() + 1, e.lastIndexOf('=')))
                 .findFirst();
     }
 

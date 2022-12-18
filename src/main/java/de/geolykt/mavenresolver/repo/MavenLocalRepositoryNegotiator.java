@@ -129,7 +129,7 @@ public class MavenLocalRepositoryNegotiator implements RepositoryNegotiatior {
         for (MavenRepository remote : candidateRepositories) {
             CompletableFuture<RepositoryAttachedValue<byte[]>> future = remote.getResource(path, executor);
             future.exceptionally((ex) -> {
-                lastUpdated.updateEntryErrored(remote.getPlaintextURL(), "", System.currentTimeMillis());
+                lastUpdated.updateEntryErrored(remote.getPlaintextURL(), ex.toString(), System.currentTimeMillis());
                 return null;
             });
             future.thenRun(() -> {
@@ -231,7 +231,7 @@ public class MavenLocalRepositoryNegotiator implements RepositoryNegotiatior {
             Long lastFetch = resolverStatus.getLastFetchTime(remote.getRepositoryId());
 
             if (lastFetch != null && (lastFetch + remote.getUpdateIntervall()) > System.currentTimeMillis()) {
-                if (resolverStatus.hasErrored(path)) {
+                if (resolverStatus.hasErrored(remote.getRepositoryId())) {
                     continue;
                 } else if (Files.exists(localFile)) {
                     // The cache is still valid - no need to fetch!
@@ -242,7 +242,7 @@ public class MavenLocalRepositoryNegotiator implements RepositoryNegotiatior {
             CompletableFuture<RepositoryAttachedValue<Path>> future = ConcurrencyUtil.exceptionally(
                 remote.getResource(path, executor),
                 (ex) -> {
-                    resolverStatus.updateEntryErrored(remote.getRepositoryId(), "", System.currentTimeMillis());
+                    resolverStatus.updateEntryErrored(remote.getRepositoryId(), ex.toString(), System.currentTimeMillis());
                     return null;
                 }).thenApply((rav) -> {
                     resolverStatus.updateEntrySuccess(remote.getRepositoryId(), System.currentTimeMillis());

@@ -24,7 +24,7 @@ public class URIMavenRepository implements MavenRepository {
         System.out.println("Downloading " + resolved);
         URLConnection connection = resolved.toURL().openConnection();
         if (connection instanceof HttpURLConnection httpUrlConn && (httpUrlConn.getResponseCode() / 100) != 2) {
-            throw new IOException("Query for " + connection.getURL() + " returned with a response code of " + httpUrlConn.getResponseCode() + " ( " + httpUrlConn.getResponseMessage() + ")");
+            throw new IOException("Query for " + connection.getURL() + " returned with a response code of " + httpUrlConn.getResponseCode() + " (" + httpUrlConn.getResponseMessage() + ")");
         }
         return connection.getInputStream().readAllBytes();
     }
