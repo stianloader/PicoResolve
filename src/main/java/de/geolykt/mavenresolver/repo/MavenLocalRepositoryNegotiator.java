@@ -15,6 +15,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import de.geolykt.mavenresolver.internal.ConcurrencyUtil;
 import de.geolykt.mavenresolver.internal.MultiCompletableFuture;
@@ -239,16 +240,36 @@ public class MavenLocalRepositoryNegotiator implements RepositoryNegotiatior {
                     continue;
                 }
             }
-            CompletableFuture<RepositoryAttachedValue<Path>> future = ConcurrencyUtil.exceptionally(
-                remote.getResource(path, executor),
-                (ex) -> {
-                    resolverStatus.updateEntryErrored(remote.getRepositoryId(), ex.toString(), System.currentTimeMillis());
-                    return null;
-                }).thenApply((rav) -> {
-                    resolverStatus.updateEntrySuccess(remote.getRepositoryId(), System.currentTimeMillis());
-                    write(rav.getValue(), localFile);
-                    return new RepositoryAttachedValue<>(localFile, rav.getRepository());
-                }
+            // This future downloads from the remote repository and updates the error timestamp
+            // if it errors while no caches are present.
+            CompletableFuture<RepositoryAttachedValue<byte[]>> fetchFuture = ConcurrencyUtil.exceptionally(
+                    remote.getResource(path, executor),
+                    (ex) -> {
+                        if (Files.exists(localFile)) {
+                            // Don't update the repository fetch timestamp here.
+                            // This is beneficial for when a repository is temporarily down or the host is down too.
+                            // The caches are used later on.
+                            return null;
+                        }
+                        resolverStatus.updateEntryErrored(remote.getRepositoryId(), ex.toString(), System.currentTimeMillis());
+                        return null;
+                    });
+            // This future writes the raw bytes fetched from the remote to disk. It then returns the path the bytes were written to.
+            CompletableFuture<RepositoryAttachedValue<Path>> future = fetchFuture.thenApply((rav) -> {
+                        resolverStatus.updateEntrySuccess(remote.getRepositoryId(), System.currentTimeMillis());
+                        write(rav.getValue(), localFile);
+                        return new RepositoryAttachedValue<>(localFile, rav.getRepository());
+                    }
+            );
+            // This future will use pre-existing caches should a download not be possible.
+            // Of course if there are no caches, it will still fail exceptionally.
+            future = ConcurrencyUtil.exceptionally(future, (ex) -> {
+                        if (Files.exists(localFile)) {
+                            return new RepositoryAttachedValue<>(localFile, remote);
+                        } else {
+                            return null;
+                        }
+                    }
             );
             futures.add(future);
         }
