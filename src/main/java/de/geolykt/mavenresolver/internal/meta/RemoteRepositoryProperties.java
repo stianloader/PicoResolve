@@ -56,7 +56,6 @@ public class RemoteRepositoryProperties {
         try {
             write(path);
         } catch (Exception ignored) {
-            ignored.printStackTrace(); // TODO
         }
     }
 
@@ -66,7 +65,6 @@ public class RemoteRepositoryProperties {
                 return new RemoteRepositoryProperties(path);
             }
         } catch (Exception ignored) {
-            ignored.printStackTrace(); // TODO
         }
         return new RemoteRepositoryProperties();
     }

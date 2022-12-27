@@ -55,6 +55,13 @@ public class MavenResolver {
      */
     public boolean ignoreTestDependencies = true;
 
+    /**
+     * Whether to pretend that dependencies marked as "optional" do not exist. This may significantly improve lookup speeds,
+     * while in most cases mirroring standard maven behaviour and being without drawbacks. However it may have drawbacks
+     * when it comes to version negotiation.
+     */
+    public boolean ignoreOptionalDependencies = true;
+
     public MavenResolver(Path mavenLocal) {
         this(mavenLocal, null);
     }
@@ -109,9 +116,6 @@ public class MavenResolver {
     }
 
     public CompletableFuture<RepositoryAttachedValue<Path>> download(GAV gav, String classifier, String extension, Executor executor) {
-        if (gav.version().getOriginText().equals("${version.shrinkwrap_descriptors}")) {
-            throw new IllegalStateException();
-        }
         CompletableFuture<RepositoryAttachedValue<Path>> resource;
         if (gav.version().getOriginText().toLowerCase(Locale.ROOT).endsWith("-snapshot")) {
             resource = downloadSnapshot(gav, classifier, extension, executor);
@@ -192,8 +196,6 @@ public class MavenResolver {
             // See https://maven.apache.org/pom.html#properties (retrieved SEPT 18th 2022 18:19 CEST)
             // "project.x: A dot (.) notated path in the POM will contain the corresponding element's value."
             // For the sake of brevity, we only iterate over the top level of elements
-            // I deem it to be very uncommon that we see use of such properties outside of the good ol' project.groupId and similar,
-            // so I believe that we can get away with being a bit more lazy there.
             // While you might laugh, my gut is telling that checking more deeply nested elements might have unforeseen consequences.
 
             // https://maven.apache.org/guides/introduction/introduction-to-the-pom.html#available-variables (retrieved SEPT 25th 2022 16:49 CEST)
@@ -242,6 +244,7 @@ public class MavenResolver {
             String scope = dependency.elementText("scope");
             String classifier = dependency.elementText("classifier");
             String type = dependency.elementText("type");
+            String optional = dependency.elementText("optional");
 
             group = applyPlaceholders(group, placeholders);
             artifactId = applyPlaceholders(artifactId, placeholders);
@@ -249,8 +252,12 @@ public class MavenResolver {
             scope = applyPlaceholders(scope, placeholders);
             classifier = applyPlaceholders(classifier, placeholders);
             type = applyPlaceholders(type, placeholders);
+            optional = applyPlaceholders(optional, placeholders);
 
             if (ignoreTestDependencies && scope != null && scope.equalsIgnoreCase("test")) {
+                continue;
+            }
+            if (ignoreOptionalDependencies && "true".equalsIgnoreCase(optional)) {
                 continue;
             }
 
