@@ -504,7 +504,7 @@ public class MavenResolver {
         for (DependencyNode dependency : rootNode.dependencies) {
             for (DependencyContainerNode dependencyNode : dependencies) {
                 if (dependencyNode.gav.group().equals(dependency.group) && dependencyNode.gav.artifact().equals(dependency.artifact)) {
-                    DependencyTree child = assembleFullTree(dependencyNode, dependency.classifier, dependency.artifact, dependencies, recursionStop);
+                    DependencyTree child = assembleFullTree(dependencyNode, dependency.classifier, dependency.type, dependencies, recursionStop);
                     children.add(child);
                     break;
                 }
