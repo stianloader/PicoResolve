@@ -15,6 +15,11 @@ public class URIMavenRepository implements MavenRepository {
     private final String id;
 
     public URIMavenRepository(String id, URI base) {
+        if (base.getPath().isEmpty()) {
+            base = base.resolve("/");
+        } else if (!base.getPath().endsWith("/")) {
+            base = base.resolve(base.getPath() + "/");
+        }
         this.base = base;
         this.id = id;
     }
