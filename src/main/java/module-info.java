@@ -1,9 +1,10 @@
-module de.geolykt.resolver {
+module de.geolykt.picoresolve {
 
-    requires transitive dom4j;
+    requires transitive org.dom4j;
     requires java.xml;
 
-    exports de.geolykt.mavenresolver;
-    exports de.geolykt.mavenresolver.version;
-    exports de.geolykt.mavenresolver.repo;
+    exports de.geolykt.picoresolve;
+    exports de.geolykt.picoresolve.exclusion;
+    exports de.geolykt.picoresolve.repo;
+    exports de.geolykt.picoresolve.version;
 }
