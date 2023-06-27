@@ -81,7 +81,7 @@ public class ResolverMetaStatus {
         nonsensePairs.forEach(props::put);
         try {
             props.store(Files.newOutputStream(out), "NOTE: This is a Maven Resolver internal implementation file, its format can be changed without prior notice.\n"
-                    + "NOTE: This file was written by de.geolykt:mavenresolver, a nonstandard resolver implementation!");
+                    + "NOTE: This file was written by de.geolykt:picoresolve, a nonstandard resolver implementation!");
         } catch (IOException e) {
             throw new RuntimeException(e);
         }

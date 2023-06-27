@@ -31,6 +31,7 @@ public class RemoteRepositoryProperties {
 
     public RemoteRepositoryProperties() {
         this(Arrays.asList("#NOTE: This is a Maven Resolver internal implementation file, its format can be changed without prior notice.",
+                "#NOTE: This file was written by de.geolykt:picoresolve, a nonstandard resolver implementation!",
                 "#" + new Date().toString()));
     }
 
