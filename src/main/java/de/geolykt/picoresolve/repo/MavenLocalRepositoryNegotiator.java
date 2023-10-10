@@ -25,8 +25,8 @@ import de.geolykt.picoresolve.internal.meta.ResolverMetaStatus;
 
 /**
  * An implementation of the {@link RepositoryNegotiatior} interface capable to reading and writing maven locals
- * while having full compatibility with the latest versions of standard maven resolver
- * (as of time of writing, so late 2022). This includes file locking and internal metadata files,
+ * while having full compatibility with the latest versions of the standard maven resolver
+ * (as of time of writing, so late 2022). This includes support for file locking and internal metadata files,
  * which were reverse-engineered by looking at file access patterns that became apparent when inspecting
  * file IO with tools such as inotifywait.
  */

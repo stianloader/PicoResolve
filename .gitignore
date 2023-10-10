@@ -3,3 +3,6 @@ target
 # Random junk / debug data I have in my project folder
 *.dat
 test*
+
+# PlantUML generated files
+design/*.png

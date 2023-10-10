@@ -68,10 +68,10 @@ public class MavenResolver {
     }
 
     public MavenResolver(Path mavenLocal, Collection<MavenRepository> repos) {
-        if (repos != null) {
-            addRepositories(repos);
-        }
         this.negotiator = new MavenLocalRepositoryNegotiator(mavenLocal);
+        if (repos != null) {
+            this.addRepositories(repos);
+        }
     }
 
     public MavenResolver addRepositories(Collection<MavenRepository> repos) {
@@ -420,6 +420,10 @@ public class MavenResolver {
                 continue;
             }
 
+            if (version == null) {
+                throw new IllegalStateException("Fatal failure while assembling dependency " + group + ":" + artifactId + ":" + classifier + ":" + type + " as defined by " + poms.get(0).getKey() + ". This likely hints at either an impoper POM or incorrect dependency management parsing by the resolver.");
+            }
+
             container.createDependency(group, artifactId, classifier, type, VersionRange.parse(version), Scope.fromString(scope), exclusions);
         }
         return container;
@@ -466,7 +470,7 @@ public class MavenResolver {
         out.put("groupId", gav.group());
     }
 
-    private CompletableFuture<DependencyManagementTree> getDependencyManagementBOMTree(Executor executor, String group, String artifact, VersionRange version, DependencyManagementTree sink) {
+    private CompletableFuture<DependencyManagementTree> getDependencyManagementBOMTree(Executor executor, String group, String artifact, VersionRange version, DependencyManagementTree parentNode) {
         return this.downloadPom(group, artifact, version, executor).thenCompose((entry) -> {
             Document xmlDoc = entry.getValue();
             List<Map.Entry<GAV, Document>> list = new ArrayList<>();
@@ -480,9 +484,10 @@ public class MavenResolver {
                 return this.downloadParentPoms(parent, executor, list);
             }
         }).thenCompose((poms) -> {
-            Map<String, String> placeholders = new HashMap<>();
-            MavenResolver.computePlaceholders(poms, 0, placeholders);
             return getDependencyManagementTree(executor, poms, 0);
+        }).thenApply((node) -> {
+            parentNode.addImportNode(node);
+            return node;
         });
     }
 

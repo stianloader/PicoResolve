@@ -5,7 +5,7 @@
     <version>1.0.0</version>
     <name>PicoResolve</name>
     <description>Small, fast &amp; asynchronous yet feature-complete reimplementation of the maven artifact resolver</description>
-    <url>https://github.com/Geolykt/MavenResolver</url>
+    <url>https://github.com/Geolykt/PicoResolve</url>
     <inceptionYear>2022</inceptionYear>
 
     <properties>
@@ -14,12 +14,12 @@
     </properties>
 
     <scm>
-        <url>https://github.com/Geolykt/MavenResolver</url>
-        <connection>scm:git:git@github.com:Geolykt/MavenResolver.git</connection>
+        <url>https://github.com/Geolykt/PicoResolve</url>
+        <connection>scm:git:git@github.com:Geolykt/PicoResolve.git</connection>
     </scm>
 
     <issueManagement>
-        <url>https://github.com/Geolykt/MavenResolver/issues</url>
+        <url>https://github.com/Geolykt/PicoResolve/issues</url>
     </issueManagement>
 
     <licenses>
@@ -33,7 +33,7 @@
     <developers>
         <developer>
             <id>geolykt</id>
-            <email>mail@geolykt.de</email>
+            <email>emeric.werner@geolykt.de</email>
             <name>Geolykt</name>
             <timezone>+1</timezone>
         </developer>
@@ -44,18 +44,8 @@
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter-api</artifactId>
-            <version>5.9.0</version>
+            <version>5.9.3</version>
             <scope>test</scope>
-            <exclusions>
-                <exclusion>
-                    <groupId>org.junit.platform</groupId>
-                    <artifactId>junit-platform-commons</artifactId>
-                </exclusion>
-                <exclusion>
-                    <groupId>*</groupId>
-                    <artifactId>*</artifactId>
-                </exclusion>
-            </exclusions>
         </dependency>
         <!-- https://mvnrepository.com/artifact/org.dom4j/dom4j -->
         <dependency>
@@ -82,8 +72,8 @@
             </resource>
         </resources>
         <plugins>
+            <!-- https://mvnrepository.com/artifact/org.apache.maven.plugins/maven-jar-plugin -->
             <plugin>
-                <!-- https://mvnrepository.com/artifact/org.apache.maven.plugins/maven-jar-plugin -->
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-jar-plugin</artifactId>
                 <version>3.3.0</version>
@@ -99,8 +89,8 @@
                     </archive>
                 </configuration>
             </plugin>
+            <!-- https://mvnrepository.com/artifact/org.apache.maven.plugins/maven-compiler-plugin -->
             <plugin>
-                <!-- https://mvnrepository.com/artifact/org.apache.maven.plugins/maven-compiler-plugin -->
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
                 <version>3.11.0</version>
@@ -113,7 +103,7 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-source-plugin</artifactId>
-                <version>3.2.1</version>
+                <version>3.3.0</version>
                 <executions>
                     <execution>
                         <id>attach-sources</id>

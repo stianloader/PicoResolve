@@ -63,7 +63,7 @@ public class DependencyLayer {
 
         @Override
         public String toString() {
-            return "DependencyLayerElement[gav=" + gav + "]";
+            return "DependencyLayerElement[gav=" + this.gav + "]";
         }
     }
 
