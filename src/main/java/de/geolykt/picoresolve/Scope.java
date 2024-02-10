@@ -2,7 +2,7 @@ package de.geolykt.picoresolve;
 
 import java.util.Locale;
 
-import org.dom4j.Element;
+import org.w3c.dom.Element;
 
 public enum Scope {
 
@@ -16,7 +16,7 @@ public enum Scope {
         if (element == null) {
             return Scope.COMPILE;
         }
-        return Scope.valueOf(element.getText().toUpperCase(Locale.ROOT));
+        return Scope.valueOf(element.getTextContent().toUpperCase(Locale.ROOT));
     }
 
     public static Scope fromString(String str) {

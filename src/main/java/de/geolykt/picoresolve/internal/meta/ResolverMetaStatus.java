@@ -1,6 +1,7 @@
 package de.geolykt.picoresolve.internal.meta;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
@@ -43,8 +44,8 @@ public class ResolverMetaStatus {
             return f;
         }
         Properties prop = new Properties();
-        try {
-            prop.load(Files.newInputStream(src));
+        try (InputStream is = Files.newInputStream(src)) {
+            prop.load(is);
         } catch (IOException ignored) {
             ignored.printStackTrace();
             return f;

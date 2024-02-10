@@ -19,9 +19,11 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Executor;
 
-import org.dom4j.Document;
-import org.dom4j.Element;
-import org.dom4j.io.SAXReader;
+import javax.xml.XMLConstants;
+import javax.xml.parsers.DocumentBuilderFactory;
+
+import org.w3c.dom.Document;
+import org.w3c.dom.Element;
 
 import de.geolykt.picoresolve.DependencyLayer.DependencyEdge;
 import de.geolykt.picoresolve.DependencyLayer.DependencyLayerElement;
@@ -29,9 +31,10 @@ import de.geolykt.picoresolve.DependencyManagementTree.DependencyManagementNode;
 import de.geolykt.picoresolve.exclusion.Exclusion;
 import de.geolykt.picoresolve.exclusion.ExclusionContainer;
 import de.geolykt.picoresolve.exclusion.ExclusionContainer.ExclusionMode;
-import de.geolykt.picoresolve.internal.ChildElementIterable;
 import de.geolykt.picoresolve.internal.ConcurrencyUtil;
 import de.geolykt.picoresolve.internal.StronglyMultiCompletableFuture;
+import de.geolykt.picoresolve.internal.XMLUtil;
+import de.geolykt.picoresolve.internal.XMLUtil.ChildElementIterable;
 import de.geolykt.picoresolve.internal.meta.VersionCatalogue;
 import de.geolykt.picoresolve.internal.meta.VersionCatalogue.SnapshotVersion;
 import de.geolykt.picoresolve.repo.MavenLocalRepositoryNegotiator;
@@ -125,26 +128,28 @@ public class MavenResolver {
     }
 
     private static void extractProperties(Document project, GAV gav, Map<String, String> out) {
-        for (Element elem : new ChildElementIterable(project.getRootElement())) {
+        for (Element elem : new ChildElementIterable(project.getDocumentElement())) {
             // See https://maven.apache.org/pom.html#properties (retrieved SEPT 18th 2022 18:19 CEST)
             // "project.x: A dot (.) notated path in the POM will contain the corresponding element's value."
+
             // For the sake of brevity, we only iterate over the top level of elements
             // While you might laugh, my gut is telling that checking more deeply nested elements might have unforeseen consequences.
+            // FIXME The above assumption is false.
 
             // https://maven.apache.org/guides/introduction/introduction-to-the-pom.html#available-variables (retrieved SEPT 25th 2022 16:49 CEST)
             // Defines that "pom.x" and "x" are allowed, even if they are discouraged (which does not prevent people from actually using them).
             // TODO as above document documents, implement "project.basedir", "project.baseUri" and "maven.build.timestamp".
             // Latter would be interesting...
-            if (elem.isTextOnly()) {
-                out.put("project." + elem.getQualifiedName(), elem.getText());
-                out.put("pom." + elem.getQualifiedName(), elem.getText());
-                out.put(elem.getQualifiedName(), elem.getText());
+            if (!elem.hasChildNodes()) {
+                out.put("project." + elem.getTagName(), elem.getTextContent());
+                out.put("pom." + elem.getTagName(), elem.getTextContent());
+                out.put(elem.getTagName(), elem.getTextContent());
             }
         }
-        Element properties = project.getRootElement().element("properties");
+        Element properties = XMLUtil.optElement(project, "properties");
         if (properties != null) {
             for (Element prop : new ChildElementIterable(properties)) {
-                out.put(prop.getName(), prop.getText());
+                out.put(prop.getTagName(), prop.getTextContent());
             }
         }
     }
@@ -152,16 +157,12 @@ public class MavenResolver {
     private CompletableFuture<Document> downloadPom(GAV gav, Executor executor) {
         return download(gav, null, "pom", executor).thenApply((pathRAV) -> {
             try {
-                SAXReader reader = new SAXReader();
-                reader.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false);
-                reader.setFeature("http://xml.org/sax/features/external-general-entities", false);
-                reader.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
                 Document xmlDoc;
-                try (InputStream is = Files.newInputStream(pathRAV.getValue())) {
-                    xmlDoc = reader.read(is);
+                {
+                    DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+                    factory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
+                    xmlDoc = factory.newDocumentBuilder().parse(Files.newInputStream(pathRAV.getValue()));
                 }
-                xmlDoc.getRootElement().normalize();
-
                 return xmlDoc;
             } catch (Exception e) {
                 throw new RuntimeException(e);
@@ -186,8 +187,8 @@ public class MavenResolver {
             VersionCatalogue merged;
             List<VersionCatalogue> catalogues = new ArrayList<>();
             for (RepositoryAttachedValue<Path> rav : item) {
-                try {
-                    VersionCatalogue catalogue = new VersionCatalogue(Files.newInputStream(rav.getValue()));
+                try (InputStream is = Files.newInputStream(rav.getValue())) {
+                    VersionCatalogue catalogue = new VersionCatalogue(is);
                     catalogues.add(catalogue);
                 } catch (Exception e) {
                     e.printStackTrace();
@@ -352,9 +353,9 @@ public class MavenResolver {
         return this.downloadPom(gav, executor).thenCompose((xmlDoc) -> {
             List<Map.Entry<GAV, Document>> list = new ArrayList<>();
             list.add(new AbstractMap.SimpleImmutableEntry<>(gav, xmlDoc));
-            Element project = xmlDoc.getRootElement();
+            Element project = xmlDoc.getDocumentElement();
             project.normalize();
-            Element parent = project.element("parent");
+            Element parent = XMLUtil.optElement(project, "parent");
             if (parent == null) {
                 return CompletableFuture.completedFuture(list);
             } else {
@@ -372,8 +373,8 @@ public class MavenResolver {
     private DependencyContainerNode getDependencyNode0(Map<String, String> placeholders, List<Entry<GAV, Document>> poms, DependencyManagementTree dependencyManagement) {
         Document xmlDoc = poms.get(0).getValue();
         DependencyContainerNode container = new DependencyContainerNode(poms.get(0).getKey());
-        Element project = xmlDoc.getRootElement();
-        Element deps = project.element("dependencies");
+        Element project = xmlDoc.getDocumentElement();
+        Element deps = XMLUtil.optElement(project, "dependencies");
         if (deps == null) {
             return container;
         }
@@ -381,15 +382,15 @@ public class MavenResolver {
         Map<VersionlessDependency, DependencyManagementNode> managementNodes = new HashMap<>();
         dependencyManagement.collectNodes(managementNodes);
 
-        for (Element dependency : deps.elements()) {
-            String group = dependency.elementText("groupId");
-            String artifactId = dependency.elementText("artifactId");
-            String version = dependency.elementText("version");
-            String scope = dependency.elementText("scope");
-            String classifier = dependency.elementText("classifier");
-            String type = dependency.elementText("type");
-            String optional = dependency.elementText("optional"); // TODO implement
-            ExclusionContainer<Exclusion> exclusions = MavenResolver.parseExclusions(dependency.element("exclusions"), placeholders);
+        for (Element dependency : new ChildElementIterable(deps)) {
+            String group = XMLUtil.elementText(dependency, "groupId");
+            String artifactId = XMLUtil.elementText(dependency, "artifactId");
+            String version = XMLUtil.elementText(dependency, "version");
+            String scope = XMLUtil.elementText(dependency, "scope");
+            String classifier = XMLUtil.elementText(dependency, "classifier");
+            String type = XMLUtil.elementText(dependency, "type");
+            String optional = XMLUtil.elementText(dependency, "optional"); // TODO implement
+            ExclusionContainer<Exclusion> exclusions = MavenResolver.parseExclusions(XMLUtil.optElement(dependency, "exclusions"), placeholders);
 
             group = MavenResolver.applyPlaceholders(group, placeholders);
             artifactId = MavenResolver.applyPlaceholders(artifactId, placeholders);
@@ -430,9 +431,9 @@ public class MavenResolver {
     }
 
     private CompletableFuture<List<Map.Entry<GAV, Document>>> downloadParentPoms(Element parentElement, Executor executor, List<Map.Entry<GAV, Document>> sink) {
-        String group = parentElement.elementText("groupId");
-        String artifactId = parentElement.elementText("artifactId");
-        String version = parentElement.elementText("version");
+        String group = XMLUtil.elementText(parentElement, "groupId");
+        String artifactId = XMLUtil.elementText(parentElement, "artifactId");
+        String version = XMLUtil.elementText(parentElement, "version");
 
         GAV gav = new GAV(group, artifactId, MavenVersion.parse(version));
 
@@ -441,9 +442,9 @@ public class MavenResolver {
             synchronized(sink) {
                 sink.add(new AbstractMap.SimpleImmutableEntry<>(gav, xmlDoc));
             }
-            Element project = xmlDoc.getRootElement();
+            Element project = xmlDoc.getDocumentElement();
             project.normalize();
-            Element parent = project.element("parent");
+            Element parent = XMLUtil.optElement(project, "parent");
             if (parent != null) {
                 return this.downloadParentPoms(parent, executor, sink);
             }
@@ -475,9 +476,9 @@ public class MavenResolver {
             Document xmlDoc = entry.getValue();
             List<Map.Entry<GAV, Document>> list = new ArrayList<>();
             list.add(entry);
-            Element project = xmlDoc.getRootElement();
+            Element project = xmlDoc.getDocumentElement();
             project.normalize();
-            Element parent = project.element("parent");
+            Element parent = XMLUtil.optElement(project, "parent");
             if (parent == null) {
                 return CompletableFuture.completedFuture(list);
             } else {
@@ -495,15 +496,15 @@ public class MavenResolver {
         Map<String, String> placeholders = new HashMap<>();
         MavenResolver.computePlaceholders(poms, pomIndex, placeholders);
 
-        Element project = poms.get(pomIndex).getValue().getRootElement();
-        Element dependencyManagement = project.element("dependencyManagement");
+        Element project = poms.get(pomIndex).getValue().getDocumentElement();
+        Element dependencyManagement = XMLUtil.optElement(project, "dependencyManagement");
         int parentPomIndex = pomIndex + 1;
         Element dependencies;
 
         if (dependencyManagement == null) {
             dependencies = null;
         } else {
-            dependencies = dependencyManagement.element("dependencies");
+            dependencies = XMLUtil.optElement(dependencyManagement, "dependencies");
         }
 
         if (dependencies == null) {
@@ -521,15 +522,15 @@ public class MavenResolver {
         } else {
             DependencyManagementTree tree = new DependencyManagementTree();
             List<CompletableFuture<DependencyManagementTree>> dependencyFutures = new ArrayList<>();
-            for (Element dependency : dependencies.elements()) {
-                String group = dependency.elementText("groupId");
-                String artifactId = dependency.elementText("artifactId");
-                String version = dependency.elementText("version");
-                String scope = dependency.elementText("scope");
-                String classifier = dependency.elementText("classifier");
-                String type = dependency.elementText("type");
-                String optional = dependency.elementText("optional"); // TODO is that inherited too?
-                ExclusionContainer<Exclusion> exclusions = MavenResolver.parseExclusions(dependency.element("exclusions"), placeholders);
+            for (Element dependency : new ChildElementIterable(dependencies)) {
+                String group = XMLUtil.elementText(dependency, "groupId");
+                String artifactId = XMLUtil.elementText(dependency, "artifactId");
+                String version = XMLUtil.elementText(dependency, "version");
+                String scope = XMLUtil.elementText(dependency, "scope");
+                String classifier = XMLUtil.elementText(dependency, "classifier");
+                String type = XMLUtil.elementText(dependency, "type");
+                String optional = XMLUtil.elementText(dependency, "optional"); // TODO implement
+                ExclusionContainer<Exclusion> exclusions = MavenResolver.parseExclusions(XMLUtil.optElement(dependency, "exclusions"), placeholders);
 
                 group = MavenResolver.applyPlaceholders(group, placeholders);
                 artifactId = MavenResolver.applyPlaceholders(artifactId, placeholders);
@@ -590,15 +591,15 @@ public class MavenResolver {
     private CompletableFuture<Map.Entry<GAV, Document>> downloadPom(String group, String artifact, VersionRange range, Executor executor) {
         return this.download(group, artifact, range, null, "pom", executor).thenApply((entry) -> {
             try {
-                SAXReader reader = new SAXReader();
-                reader.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false);
-                reader.setFeature("http://xml.org/sax/features/external-general-entities", false);
-                reader.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
                 Document xmlDoc;
-                try (InputStream is = Files.newInputStream(entry.getValue().getValue())) {
-                    xmlDoc = reader.read(is);
+                {
+                    DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+                    factory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
+                    try (InputStream is = Files.newInputStream(entry.getValue().getValue())) {
+                        xmlDoc = factory.newDocumentBuilder().parse(is);
+                    }
                 }
-                xmlDoc.getRootElement().normalize();
+                xmlDoc.getDocumentElement().normalize();
                 return new AbstractMap.SimpleImmutableEntry<>(entry.getKey(), xmlDoc);
             } catch (Exception e) {
                 throw new RuntimeException(e);
@@ -610,11 +611,11 @@ public class MavenResolver {
         if (element == null) {
             return null;
         }
-        List<Element> exclusions = element.elements();
+        List<Element> exclusions = XMLUtil.getChildElements(element);
         List<Exclusion> parsed = new ArrayList<>(exclusions.size());
         for (Element exclusion : exclusions) {
-            String group = exclusion.elementText("groupId");
-            String artifact = exclusion.elementText("artifactId");
+            String group = XMLUtil.elementText(exclusion, "groupId");
+            String artifact = XMLUtil.elementText(exclusion, "artifactId");
             group = MavenResolver.applyPlaceholders(group, placeholders);
             artifact = MavenResolver.applyPlaceholders(artifact, placeholders);
 

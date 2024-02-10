@@ -22,10 +22,11 @@ This project has following core ideas:
 - Extending support to other transports should be easily possible from the
  developer's side.
 - The compiled jar may not be larger than 150 KB.
-- Ideally the resolver should not depend on any external dependencies
- (as of now we depend on dom4j for XML parsing & traversal)
+- The resolver does not depend on any 3rd party libraries at runtime (SLF4J
+ may be an optional dependency in the future and jetbrains-annoations is a
+ compile-time dependency)
 
-Readability is welcome whenever applicable, however it was evaluated that
+While readability is welcome whenever applicable, it was evaluated that
 the needed multi-thread capabilities severely hamper the readability of the
 application. However as in practice readability is (sadly) much less
 important as fast resolution, the unfortunate compromise was done at the
@@ -36,15 +37,14 @@ bandwidth is a much lesser concern compared to latency. If files were to
 be downloaded serially the time spent waiting for the server would rise
 with the amount of repositories that need to be hit. As such all requests
 need to be done at the same time, even if that means that slightly more
-bandwidth it made  us of in the process. The performance gains from waiting
+bandwidth it makes use of in the process. The performance gains from waiting
 less for the server to respond greatly overshadow the performance loss from
 writing and reading the extra data from the relevant networking stack.
 
 ## Dependencies
 
-PicoResolve depends on the following at minimum:
+PicoResolve depends on the following at minimum (at runtime):
  - Java 17 or above
- - dom4j 1.4.3 or above
 
 ## Building
 

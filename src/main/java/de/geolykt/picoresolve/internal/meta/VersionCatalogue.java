@@ -7,14 +7,17 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 
-import org.dom4j.Document;
-import org.dom4j.DocumentException;
-import org.dom4j.Element;
-import org.dom4j.io.SAXReader;
+import javax.xml.XMLConstants;
+import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.parsers.ParserConfigurationException;
+
+import org.w3c.dom.Document;
+import org.w3c.dom.Element;
 import org.xml.sax.SAXException;
 
-import de.geolykt.picoresolve.internal.ChildElementIterable;
 import de.geolykt.picoresolve.internal.ConfusedResolverException;
+import de.geolykt.picoresolve.internal.XMLUtil;
+import de.geolykt.picoresolve.internal.XMLUtil.ChildElementIterable;
 import de.geolykt.picoresolve.version.MavenVersion;
 import de.geolykt.picoresolve.version.VersionRange;
 
@@ -41,56 +44,38 @@ public class VersionCatalogue {
         // No-arguments constructor needed for the #merge method
     }
 
-    public VersionCatalogue(InputStream is) throws SAXException, DocumentException, IOException {
-        SAXReader reader = new SAXReader();
-        reader.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false);
-        reader.setFeature("http://xml.org/sax/features/external-general-entities", false);
-        reader.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
-        DocumentException caught = null;
-        Document xmlDoc = null;
-        try {
-            xmlDoc = reader.read(is);
-        } catch (DocumentException t) {
-            caught = t;
-        } finally {
-            try {
-                is.close();
-            } catch (Throwable t) {
-                if (caught == null) {
-                    throw t;
-                }
-                t.addSuppressed(caught);
-                throw t;
-            }
-            if (caught != null) {
-                throw caught;
-            }
+    public VersionCatalogue(InputStream is) throws SAXException, IOException, ParserConfigurationException {
+        Document xmlDoc;
+        {
+            DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+            factory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
+            xmlDoc = factory.newDocumentBuilder().parse(is);
         }
 
         if (xmlDoc == null) {
             throw new NullPointerException("xmlDoc is null");
         }
 
-        Element metadata = xmlDoc.getRootElement();
+        Element metadata = xmlDoc.getDocumentElement();
         metadata.normalize();
 
-        Element versioning = metadata.element("versioning");
+        Element versioning = XMLUtil.reqElement(metadata, "versioning");
         Element versions = null;
         Element snapshotVersions = null;
 
         for (Element element : new ChildElementIterable(versioning)) {
-            switch (element.getName().toLowerCase(Locale.ROOT)) {
+            switch (element.getTagName().toLowerCase(Locale.ROOT)) {
             case "versions":
                 versions = element;
                 break;
             case "release":
-                releaseVersion = MavenVersion.parse(element.getText());
+                releaseVersion = MavenVersion.parse(element.getTextContent());
                 break;
             case "latest":
-                latestVersion = MavenVersion.parse(element.getText());
+                latestVersion = MavenVersion.parse(element.getTextContent());
                 break;
             case "lastupdated":
-                lastUpdated = element.getText();
+                lastUpdated = element.getTextContent();
 
                 if (lastUpdated.length() != 14) {
                     throw new ConfusedResolverException("Last updated string \"" + lastUpdated + "\" is not following an implemented standard.");
@@ -111,7 +96,7 @@ public class VersionCatalogue {
                 if (latestVersion != null) {
                     throw new IllegalStateException();
                 }
-                latestVersion = MavenVersion.parse(element.getText());
+                latestVersion = MavenVersion.parse(element.getTextContent());
                 break;
             }
         }
@@ -128,8 +113,8 @@ public class VersionCatalogue {
         // Of course we could just invalidate the cache and request the file again, but this would introduce
         // further latency as well as complexity in the library (as this error state would most likely need to be handled
         // by the caller, as the needed repository references are unavailable within this constructor).
-        Element snapshots = versioning.element("snapshot");
-        Element versionElement = metadata.element("version");
+        Element snapshots = XMLUtil.optElement(versioning, "snapshot");
+        Element versionElement = XMLUtil.optElement(metadata, "version");
 
         if ((versions == null && snapshotVersions == null)
                 && (snapshots == null || versionElement == null)) {
@@ -138,40 +123,40 @@ public class VersionCatalogue {
         }
 
         if (snapshots != null && versionElement != null) {
-            Element timestamp = snapshots.element("timestamp");
-            Element buildNr = snapshots.element("buildNumber");
-            Element localCopy = snapshots.element("localCopy");
+            Element timestamp = XMLUtil.optElement(snapshots, "timestamp");
+            Element buildNr = XMLUtil.optElement(snapshots, "buildNumber");
+            Element localCopy = XMLUtil.optElement(snapshots, "localCopy");
             if ((timestamp == null || buildNr == null) && localCopy == null) {
-                throw new ConfusedResolverException("Too little data remaining to be able to build up a fallback snapshot version: " + metadata.asXML());
+                throw new ConfusedResolverException("Too little data remaining to be able to build up a fallback snapshot version: " + metadata.toString());
             }
             if (localCopy != null) {
-                this.localCopy = "true".equalsIgnoreCase(localCopy.getText());
+                this.localCopy = "true".equalsIgnoreCase(localCopy.getTextContent());
             }
             if (timestamp != null && buildNr != null) {
-                int index = versionElement.getText().toLowerCase().lastIndexOf("-snapshot");
+                int index = versionElement.getTextContent().toLowerCase().lastIndexOf("-snapshot");
                 if (index == -1) {
-                    this.fallbackSnapshotVersion = versionElement.getText() + "-" + timestamp.getText() + "-" + buildNr.getText();
+                    this.fallbackSnapshotVersion = versionElement.getTextContent() + "-" + timestamp.getTextContent() + "-" + buildNr.getTextContent();
                 } else {
-                    this.fallbackSnapshotVersion = versionElement.getText().substring(0, index) + "-" + timestamp.getText() + "-" + buildNr.getText();
+                    this.fallbackSnapshotVersion = versionElement.getTextContent().substring(0, index) + "-" + timestamp.getTextContent() + "-" + buildNr.getTextContent();
                 }
             }
         }
 
         if (versions != null) {
             for (Element element : new ChildElementIterable(versions)) {
-                if (element.getName().equalsIgnoreCase("version")) {
-                    this.releaseVersions.add(MavenVersion.parse(element.getText()));
+                if (element.getTagName().equalsIgnoreCase("version")) {
+                    this.releaseVersions.add(MavenVersion.parse(element.getTextContent()));
                 }
             }
         }
 
         if (snapshotVersions != null) {
             for (Element element : new ChildElementIterable(snapshotVersions)) {
-                if (element.getName().equalsIgnoreCase("snapshotVersion")) {
-                    String extension = element.elementText("extension");
-                    String lastUpdated = element.elementText("updated");
-                    String version = element.elementText("value");
-                    String classifier = element.elementText("classifier");
+                if (element.getTagName().equalsIgnoreCase("snapshotVersion")) {
+                    String extension = XMLUtil.elementText(element, "extension");
+                    String lastUpdated = XMLUtil.elementText(element, "updated");
+                    String version = XMLUtil.elementText(element, "value");
+                    String classifier = XMLUtil.elementText(element, "classifier");
                     this.snapshotVersions.add(new SnapshotVersion(extension, classifier, version, lastUpdated));
                 }
             }
