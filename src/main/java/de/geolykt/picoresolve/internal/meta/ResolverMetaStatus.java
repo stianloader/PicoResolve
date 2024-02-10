@@ -2,11 +2,14 @@ package de.geolykt.picoresolve.internal.meta;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
+
+import org.jetbrains.annotations.NotNull;
 
 /**
  * The resolver-status.properties file is functionally the same as {@link LastUpdatedFile}
@@ -38,7 +41,7 @@ public class ResolverMetaStatus {
         return lastFetch.get("maven-metadata-" + repoId + ".xml");
     }
 
-    public static ResolverMetaStatus tryParse(Path src) {
+    public static ResolverMetaStatus tryParse(@NotNull Path src) {
         ResolverMetaStatus f = new ResolverMetaStatus();
         if (Files.notExists(src)) {
             return f;
@@ -71,7 +74,7 @@ public class ResolverMetaStatus {
         return f;
     }
 
-    public void write(Path out) {
+    public void write(@NotNull Path out) {
         Properties props = new Properties();
         errors.forEach((key, val) -> {
             props.put(key + ".error", val);
@@ -80,8 +83,8 @@ public class ResolverMetaStatus {
             props.put(key + ".lastUpdated", val.toString());
         });
         nonsensePairs.forEach(props::put);
-        try {
-            props.store(Files.newOutputStream(out), "NOTE: This is a Maven Resolver internal implementation file, its format can be changed without prior notice.\n"
+        try (OutputStream os = Files.newOutputStream(out)) {
+            props.store(os, "NOTE: This is a Maven Resolver internal implementation file, its format can be changed without prior notice.\n"
                     + "NOTE: This file was written by de.geolykt:picoresolve, a nonstandard resolver implementation!");
         } catch (IOException e) {
             throw new RuntimeException(e);

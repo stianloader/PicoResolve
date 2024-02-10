@@ -5,6 +5,10 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 
+import org.jetbrains.annotations.Contract;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+
 import de.geolykt.picoresolve.DependencyLayer.DependencyEdge;
 import de.geolykt.picoresolve.DependencyLayer.DependencyLayerElement;
 import de.geolykt.picoresolve.exclusion.Exclusion;
@@ -13,25 +17,34 @@ import de.geolykt.picoresolve.version.VersionRange;
 
 class DependencyContainerNode {
 
+    @NotNull
     final List<SubdependencyNode> dependencies = new ArrayList<>();
 
+    @NotNull
     final GAV gav;
 
-    DependencyContainerNode(GAV gav) {
+    DependencyContainerNode(@NotNull GAV gav) {
         this.gav = gav;
     }
 
     class SubdependencyNode {
 
+        @NotNull
         final String group;
+        @NotNull
         final String artifact;
+        @Nullable
         final String classifier;
+        @NotNull
         final String type;
+        @NotNull
         final ExclusionContainer<Exclusion> exclusions;
+        @NotNull
         final Scope scope;
+        @NotNull
         final VersionRange version;
 
-        SubdependencyNode(String group, String artifact, String classifier, String type, VersionRange version, Scope scope, ExclusionContainer<Exclusion> exclusions) {
+        SubdependencyNode(@NotNull String group, @NotNull String artifact, @Nullable String classifier, @Nullable String type, @NotNull VersionRange version, @NotNull Scope scope, @Nullable ExclusionContainer<Exclusion> exclusions) {
             if (type == null) {
                 type = "jar";
             }
@@ -67,7 +80,7 @@ class DependencyContainerNode {
         }
     }
 
-    void createDependency(String group, String artifactId, String classifier, String type, VersionRange version, Scope scope, ExclusionContainer<Exclusion> exclusions) {
+    void createDependency(@NotNull String group, @NotNull String artifactId, @Nullable String classifier, @Nullable String type, @NotNull VersionRange version, @NotNull Scope scope, @Nullable ExclusionContainer<Exclusion> exclusions) {
         if (type == null) {
             type = "jar";
         }
@@ -80,10 +93,9 @@ class DependencyContainerNode {
         this.dependencies.add(dep);
     }
 
-    SubdependencyNode selectDependency(String group, String artifactId, String classifier, String type) {
-        if (type == null) {
-            type = "jar";
-        }
+    @Nullable
+    @Contract(pure = true)
+    SubdependencyNode selectDependency(@NotNull String group, @NotNull String artifactId, @Nullable String classifier, @NotNull String type) {
         for (SubdependencyNode node : this.dependencies) {
             if (node.group.equals(group)
                     && node.artifact.equals(artifactId)
@@ -95,7 +107,9 @@ class DependencyContainerNode {
         return null;
     }
 
-    public DependencyLayerElement toLayerElement(String classifier, String type, ExclusionContainer<?> inheritedExclusions) {
+    @NotNull
+    @Contract(pure = true, value = "_, _, _-> new")
+    public DependencyLayerElement toLayerElement(@Nullable String classifier, @Nullable String type, @NotNull ExclusionContainer<?> inheritedExclusions) {
         List<DependencyEdge> edges = new ArrayList<>();
         for (SubdependencyNode node : this.dependencies) {
             if (inheritedExclusions.isExcluding(node.group, node.artifact)) {

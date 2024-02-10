@@ -7,6 +7,8 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
 
+import org.jetbrains.annotations.NotNull;
+
 import de.geolykt.picoresolve.internal.ConfusedResolverException;
 
 /**
@@ -24,7 +26,8 @@ public class MavenVersion implements Comparable<MavenVersion> {
     }
 
 
-    public static MavenVersion parse(String string) {
+    @NotNull
+    public static MavenVersion parse(@NotNull String string) {
         List<String> tokens = purgeTokens(splitTokens(string));
         if (tokens.isEmpty()) {
             return new MavenVersion(string, Arrays.asList());

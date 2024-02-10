@@ -4,25 +4,32 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+
 // Based on https://maven.apache.org/enforcer/enforcer-rules/versionRanges.html
 public class VersionRange {
 
-    private final List<MavenVersion> recommendedVersions;
-    private final List<VersionSet> versionSets;
+    @NotNull
+    private final List<@NotNull MavenVersion> recommendedVersions;
+    @NotNull
+    private final List<@NotNull VersionSet> versionSets;
 
+    @NotNull
     public static final VersionRange FREE_RANGE = VersionRange.parse(",");
 
-    private VersionRange(List<VersionSet> sets, List<MavenVersion> recommended) {
+    private VersionRange(@NotNull List<@NotNull VersionSet> sets, @NotNull List<@NotNull MavenVersion> recommended) {
         this.recommendedVersions = Collections.unmodifiableList(new ArrayList<>(recommended));
         this.versionSets = Collections.unmodifiableList(new ArrayList<>(sets));
     }
 
-    public static VersionRange parse(String string) {
+    @NotNull
+    public static VersionRange parse(@NotNull String string) {
         if (string.length() == 1 && string.codePointAt(0) == ',') {
             return new VersionRange(Collections.emptyList(), Collections.emptyList());
         }
-        List<VersionSet> sets = new ArrayList<>();
-        List<MavenVersion> recommendedVersions = new ArrayList<>();
+        List<@NotNull VersionSet> sets = new ArrayList<>();
+        List<@NotNull MavenVersion> recommendedVersions = new ArrayList<>();
 
         int[] codepoints = string.codePoints().toArray();
 
@@ -117,7 +124,7 @@ public class VersionRange {
         return true;
     }
 
-    public List<MavenVersion> getRecommendedVersions() {
+    public List<@NotNull MavenVersion> getRecommendedVersions() {
         return this.recommendedVersions;
     }
 
@@ -242,14 +249,15 @@ public class VersionRange {
         return builder.toString();
     }
 
-    public VersionRange intersect(VersionRange version) {
+    @NotNull
+    public VersionRange intersect(@NotNull VersionRange version) {
         if (this == FREE_RANGE) {
             return version;
         } else if (version == FREE_RANGE) {
             return this;
         }
-        List<VersionSet> sets = new ArrayList<>(this.versionSets);
-        List<MavenVersion> recommended = new ArrayList<>(this.recommendedVersions);
+        List<@NotNull VersionSet> sets = new ArrayList<>(this.versionSets);
+        List<@NotNull MavenVersion> recommended = new ArrayList<>(this.recommendedVersions);
         sets.addAll(version.versionSets);
         recommended.addAll(version.recommendedVersions);
         return new VersionRange(sets, recommended);
@@ -262,6 +270,7 @@ public class VersionRange {
      *
      * @return The highest recommended version that lies within the bounds of the version range.
      */
+    @Nullable
     public MavenVersion getRecommended() {
         MavenVersion newest = null;
         for (MavenVersion version : this.recommendedVersions) {

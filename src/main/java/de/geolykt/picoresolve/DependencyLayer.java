@@ -2,16 +2,23 @@ package de.geolykt.picoresolve;
 
 import java.util.List;
 
+import org.jetbrains.annotations.Contract;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+
 import de.geolykt.picoresolve.exclusion.Exclusion;
 import de.geolykt.picoresolve.exclusion.ExclusionContainer;
 import de.geolykt.picoresolve.version.VersionRange;
 
 public class DependencyLayer {
+    @Nullable
     public final DependencyLayer parent;
+    @NotNull
     public final List<DependencyLayerElement> elements;
+    @Nullable
     private DependencyLayer child;
 
-    public DependencyLayer(DependencyLayer parent, List<DependencyLayerElement> elements) {
+    public DependencyLayer(@Nullable DependencyLayer parent, @NotNull List<DependencyLayerElement> elements) {
         this.parent = parent;
         this.elements = elements;
         for (DependencyLayerElement element : elements) {
@@ -28,19 +35,27 @@ public class DependencyLayer {
         }
     }
 
+    @Contract(pure = true)
+    @Nullable
     public DependencyLayer getChild() {
         return this.child;
     }
 
     public static class DependencyLayerElement {
+        @Nullable
         private DependencyLayer layer;
+        @NotNull
         public final GAV gav;
+        @Nullable
         public final String classifier;
+        @NotNull
         public final String type;
+        @NotNull
         public final ExclusionContainer<?> parentExclusions;
+        @NotNull
         public final List<DependencyEdge> outgoingEdges;
 
-        public DependencyLayerElement(GAV gav, String classifier, String type, ExclusionContainer<?> parentExclusions, List<DependencyEdge> outgoingEdges) {
+        public DependencyLayerElement(@NotNull GAV gav, @Nullable String classifier, @Nullable String type, @NotNull ExclusionContainer<?> parentExclusions, @NotNull List<DependencyEdge> outgoingEdges) {
             this.gav = gav;
             this.classifier = classifier;
             this.type = type == null ? "jar" : type;
@@ -54,31 +69,43 @@ public class DependencyLayer {
             }
         }
 
+        @NotNull
         public DependencyLayer getLayer() {
-            if (this.layer == null) {
+            DependencyLayer layer = this.layer;
+            if (layer == null) {
                 throw new IllegalStateException("This layer is not yet associated with a dependency layer.");
             }
-            return this.layer;
+            return layer;
         }
 
         @Override
+        @NotNull
         public String toString() {
             return "DependencyLayerElement[gav=" + this.gav + "]";
         }
     }
 
     public static class DependencyEdge {
+        @Nullable
         private DependencyLayerElement declarer;
+        @NotNull
         public final String group;
+        @NotNull
         public final String artifact;
+        @Nullable
         public final String classifier;
+        @NotNull
         public final String type;
+        @NotNull
         public final VersionRange requestedVersion;
+        @NotNull
         public final Scope scope;
+        @NotNull
         public final ExclusionContainer<Exclusion> edgeExclusion;
+        @Nullable
         private DependencyLayerElement resolved;
 
-        public DependencyEdge(String group, String artifact, String classifier, String type, VersionRange requestedVersion, Scope scope, ExclusionContainer<Exclusion> edgeExclusion) {
+        public DependencyEdge(@NotNull String group, @NotNull String artifact, @Nullable String classifier, @NotNull String type, @NotNull VersionRange requestedVersion, @NotNull Scope scope, @NotNull ExclusionContainer<Exclusion> edgeExclusion) {
             this.group = group;
             this.artifact = artifact;
             this.classifier = classifier;
@@ -88,64 +115,55 @@ public class DependencyLayer {
             this.edgeExclusion = edgeExclusion;
         }
 
-        DependencyEdge(VersionlessDependency coordinate, VersionRange requestedVersion, Scope scope, ExclusionContainer<Exclusion> edgeExclusion) {
-            this(coordinate.group(), coordinate.artifact(), coordinate.classifier(), coordinate.type() == null ? "jar" : coordinate.type(), requestedVersion, scope, edgeExclusion);
+        DependencyEdge(@NotNull VersionlessDependency coordinate, @NotNull VersionRange requestedVersion, @NotNull Scope scope, @NotNull ExclusionContainer<Exclusion> edgeExclusion) {
+            this(coordinate.group(), coordinate.artifact(), coordinate.classifier(), coordinate.getType("jar"), requestedVersion, scope, edgeExclusion);
         }
 
+        @Contract(pure = true)
         public boolean isResolved() {
             return this.resolved != null;
         }
 
+        @NotNull
+        @Contract(pure = true)
         public DependencyLayerElement getResolved() {
-            if (this.resolved == null) {
+            DependencyLayerElement resolved = this.resolved;
+            if (resolved == null) {
                 throw new IllegalStateException("Edge has not yet been resolved [" + this.group + ":" + this.artifact + "]! It is declared by " + (this.declarer != null ? this.getDeclarer().gav : "null"));
             }
-            return this.resolved;
+            return resolved;
         }
 
-        void resolve(DependencyLayerElement element) {
+        @Contract(pure = false, mutates = "this")
+        void resolve(@NotNull DependencyLayerElement element) {
             if (this.resolved != null) {
                 throw new IllegalStateException("Edge is already resolved!");
             }
             this.resolved = element;
         }
 
+        @NotNull
+        @Contract(pure = true)
         public DependencyLayerElement getDeclarer() {
-            if (this.declarer == null) {
+            DependencyLayerElement declarer = this.declarer;
+            if (declarer == null) {
                 throw new IllegalStateException("This edge is not yet associated with a dependency layer element.");
             }
-            return this.declarer;
-        }
-    }
-
-    // !!! BELOW IS OLDER (most likely nonsensical) CODE. REMOVE IT IN PROD AT LATEST !!!
-
-    /*
-    public final DependencyLayer parent;
-    final Map<VersionlessDependency, MavenVersion> declaredVersions = new ConcurrentHashMap<>();
-    final Map<VersionlessDependency, DependencyAggregation> dependencyReferrals = new ConcurrentHashMap<>();
-
-    public DependencyLayer(DependencyLayer parent) {
-        this.parent = parent;
-    }
-
-    boolean isDefined(VersionlessDependency dependency) {
-        return this.declaredVersions.containsKey(dependency) || (this.parent != null && this.parent.isDefined(dependency));
-    }
-
-    class DependencyAggregation {
-        VersionRange effectiveRange = VersionRange.FREE_RANGE;
-        final ExclusionContainer<ExclusionContainer<?>> effectiveExclusions;
-
-        public DependencyAggregation() {
-            this.effectiveExclusions = new ExclusionContainer<>(ExclusionMode.ALL);
+            return declarer;
         }
 
-        public void aggregateRequests(VersionRange requestedRange, Collection<ExclusionContainer<?>> requestedExclusions) {
-            this.effectiveRange = this.effectiveRange.intersect(requestedRange);
-            for (ExclusionContainer<?> container : requestedExclusions) {
-                this.effectiveExclusions.addChild(container);
-            }
+        @Override
+        @NotNull
+        public String toString() {
+            return "DependencyLayerEdge"
+                    + "[group=" + this.group
+                    + " artifact=" + this.artifact
+                    + " classifier=" + this.classifier
+                    + " type=" + this.type
+                    + " scope=" + this.scope
+                    + " version=" + this.requestedVersion.toString()
+                    + " exclusions=" + this.edgeExclusion.toString()
+                    + "]";
         }
-    }*/
+    }
 }

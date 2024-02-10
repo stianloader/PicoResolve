@@ -1,5 +1,7 @@
 package de.geolykt.picoresolve;
 
+import org.jetbrains.annotations.NotNull;
+
 import de.geolykt.picoresolve.version.MavenVersion;
 import de.geolykt.picoresolve.version.VersionRange;
 
@@ -18,5 +20,5 @@ import de.geolykt.picoresolve.version.VersionRange;
  * that things such as case-sensitivity is important when performing the inevitable {@link MavenVersion#parse(String)}
  * call before invoking the constructor of this class.
  */
-public final record GAV(String group, String artifact, MavenVersion version) {
+public final record GAV(@NotNull String group, @NotNull String artifact, @NotNull MavenVersion version) {
 }

@@ -11,10 +11,14 @@ import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
+
+import org.jetbrains.annotations.Contract;
+import org.jetbrains.annotations.NotNull;
 
 import de.geolykt.picoresolve.internal.ConcurrencyUtil;
 import de.geolykt.picoresolve.internal.MultiCompletableFuture;
@@ -31,15 +35,15 @@ import de.geolykt.picoresolve.internal.meta.ResolverMetaStatus;
  * file IO with tools such as inotifywait.
  */
 public class MavenLocalRepositoryNegotiator implements RepositoryNegotiatior {
+    @NotNull
     private final Path mavenLocal;
+    @NotNull
     private final Set<String> remoteIds = new HashSet<>();
+    @NotNull
     private final List<MavenRepository> remoteRepositories = new ArrayList<>();
 
-    public MavenLocalRepositoryNegotiator(Path mavenLocal) {
-        if (mavenLocal == null) {
-            throw new IllegalArgumentException("The cache directory defined by \"mavenLocal\" may not be null!");
-        }
-        this.mavenLocal = mavenLocal;
+    public MavenLocalRepositoryNegotiator(@NotNull Path mavenLocal) {
+        this.mavenLocal = Objects.requireNonNull(mavenLocal, "The cache directory defined by \"mavenLocal\" may not be null!");
         if (!Files.isDirectory(mavenLocal)) {
             if (Files.notExists(mavenLocal)) {
                 try {
@@ -53,11 +57,14 @@ public class MavenLocalRepositoryNegotiator implements RepositoryNegotiatior {
         }
     }
 
+    @NotNull
     public Path getLocalCache() {
         return this.mavenLocal;
     }
 
-    public MavenLocalRepositoryNegotiator addRepository(MavenRepository remote) {
+    @NotNull
+    @Contract(mutates = "this", pure = false, value = "null -> fail; !null -> this")
+    public MavenLocalRepositoryNegotiator addRepository(@NotNull MavenRepository remote) {
         if (this.remoteIds.add(remote.getRepositoryId())) {
             this.remoteRepositories.add(remote);
         } else {
@@ -67,7 +74,8 @@ public class MavenLocalRepositoryNegotiator implements RepositoryNegotiatior {
     }
 
     @Override
-    public CompletableFuture<RepositoryAttachedValue<Path>> resolveStandard(String path, Executor executor) {
+    @NotNull
+    public CompletableFuture<RepositoryAttachedValue<Path>> resolveStandard(@NotNull String path, @NotNull Executor executor) {
 
         Path localFile = this.mavenLocal.resolve(path);
         Path lastUpdateFile = this.mavenLocal.resolve(path + ".lastUpdated");
@@ -80,7 +88,7 @@ public class MavenLocalRepositoryNegotiator implements RepositoryNegotiatior {
 
         if (localFilePresent && sourceRepo.isEmpty()) {
             // Maven local
-            return CompletableFuture.completedFuture(new RepositoryAttachedValue<>(localFile, null));
+            return CompletableFuture.completedFuture(new RepositoryAttachedValue<>(null, localFile));
         }
         if (!localFilePresent && Files.notExists(localFile.getParent())) {
             try {
@@ -101,10 +109,10 @@ public class MavenLocalRepositoryNegotiator implements RepositoryNegotiatior {
                     // resolver did something strange here (for some reason it is rather common for the .lastUpdated
                     // file to be absent).
                     // Whatever the reason, there is no need to fetch the file from remote again
-                    return CompletableFuture.completedFuture(new RepositoryAttachedValue<>(localFile, remote));
+                    return CompletableFuture.completedFuture(new RepositoryAttachedValue<>(remote, localFile));
                 } else if ((lastFetch + remote.getUpdateIntervall()) > System.currentTimeMillis()) {
                     // The cache is still valid - no need to fetch!
-                    return CompletableFuture.completedFuture(new RepositoryAttachedValue<>(localFile, remote));
+                    return CompletableFuture.completedFuture(new RepositoryAttachedValue<>(remote, localFile));
                 } else {
                     candidateRepositories.clear();
                     candidateRepositories.add(remote);
@@ -113,7 +121,7 @@ public class MavenLocalRepositoryNegotiator implements RepositoryNegotiatior {
             }
             if (!lastUpdated.hasErrored(remote.getPlaintextURL())) {
                 if (lastFetch != null && (lastFetch + remote.getUpdateIntervall()) > System.currentTimeMillis()) {
-                    return CompletableFuture.completedFuture(new RepositoryAttachedValue<>(localFile, remote));
+                    return CompletableFuture.completedFuture(new RepositoryAttachedValue<>(remote, localFile));
                 }
             } else if (lastFetch != null && (lastFetch + remote.getUpdateIntervall()) > System.currentTimeMillis()) {
                 continue;
@@ -122,7 +130,7 @@ public class MavenLocalRepositoryNegotiator implements RepositoryNegotiatior {
         }
 
         if (candidateRepositories.isEmpty() && localFilePresent) {
-            return CompletableFuture.completedFuture(new RepositoryAttachedValue<>(localFile, null));
+            return CompletableFuture.completedFuture(new RepositoryAttachedValue<>(null, localFile));
         }
 
         List<CompletableFuture<RepositoryAttachedValue<byte[]>>> futures = new ArrayList<>();
@@ -144,12 +152,15 @@ public class MavenLocalRepositoryNegotiator implements RepositoryNegotiatior {
 
         CompletableFuture<RepositoryAttachedValue<Path>> ret = ConcurrencyUtil.exceptionally(combined.thenApply((rav) -> {
             write(rav.getValue(), localFile);
-            repoProps.setSourceRepository(localFile.getFileName().toString(), rav.getRepository().getRepositoryId());
-            repoProps.tryWrite(remoteRepos);
-            return new RepositoryAttachedValue<>(localFile, rav.getRepository());
+            MavenRepository originRepository = rav.getRepository();
+            if (originRepository != null) {
+                repoProps.setSourceRepository(localFile.getFileName().toString(), originRepository.getRepositoryId());
+                repoProps.tryWrite(remoteRepos);
+            }
+            return new RepositoryAttachedValue<>(originRepository, localFile);
         }), (ex) -> {
             if (Files.exists(localFile)) {
-                return new RepositoryAttachedValue<>(localFile, null);
+                return new RepositoryAttachedValue<>(null, localFile);
             }
             return null;
         });
@@ -199,7 +210,8 @@ public class MavenLocalRepositoryNegotiator implements RepositoryNegotiatior {
     }
 
     @Override
-    public CompletableFuture<List<RepositoryAttachedValue<Path>>> resolveMavenMeta(String path, Executor executor) {
+    @NotNull
+    public CompletableFuture<List<RepositoryAttachedValue<Path>>> resolveMavenMeta(@NotNull String path, @NotNull Executor executor) {
         Path parentDirectory = this.mavenLocal.resolve(path).getParent();
         if (parentDirectory == null) {
             throw new IllegalStateException("\"path\" might only consist of a slash!");
@@ -220,7 +232,7 @@ public class MavenLocalRepositoryNegotiator implements RepositoryNegotiatior {
         } else {
             Path mvnLocalMeta = parentDirectory.resolve("maven-metadata-local.xml");
             if (Files.exists(mvnLocalMeta)) {
-                futures.add(CompletableFuture.completedFuture(new RepositoryAttachedValue<>(mvnLocalMeta, null)));
+                futures.add(CompletableFuture.completedFuture(new RepositoryAttachedValue<>(null, mvnLocalMeta)));
             }
         }
 
@@ -235,7 +247,7 @@ public class MavenLocalRepositoryNegotiator implements RepositoryNegotiatior {
                     continue;
                 } else if (Files.exists(localFile)) {
                     // The cache is still valid - no need to fetch!
-                    futures.add(CompletableFuture.completedFuture(new RepositoryAttachedValue<>(localFile, remote)));
+                    futures.add(CompletableFuture.completedFuture(new RepositoryAttachedValue<>(remote, localFile)));
                     continue;
                 }
             }
@@ -257,14 +269,14 @@ public class MavenLocalRepositoryNegotiator implements RepositoryNegotiatior {
             CompletableFuture<RepositoryAttachedValue<Path>> future = fetchFuture.thenApply((rav) -> {
                         resolverStatus.updateEntrySuccess(remote.getRepositoryId(), System.currentTimeMillis());
                         write(rav.getValue(), localFile);
-                        return new RepositoryAttachedValue<>(localFile, rav.getRepository());
+                        return new RepositoryAttachedValue<>(rav.getRepository(), localFile);
                     }
             );
             // This future will use pre-existing caches should a download not be possible.
             // Of course if there are no caches, it will still fail exceptionally.
             future = ConcurrencyUtil.exceptionally(future, (ex) -> {
                         if (Files.exists(localFile)) {
-                            return new RepositoryAttachedValue<>(localFile, remote);
+                            return new RepositoryAttachedValue<>(remote, localFile);
                         } else {
                             return null;
                         }

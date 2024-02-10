@@ -11,6 +11,7 @@ import javax.xml.XMLConstants;
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.parsers.ParserConfigurationException;
 
+import org.jetbrains.annotations.NotNull;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.xml.sax.SAXException;
@@ -26,8 +27,10 @@ public class VersionCatalogue {
     public static record SnapshotVersion(String extension, String classifier, String version, String lastUpdated) {
     }
 
-    public final List<MavenVersion> releaseVersions = new ArrayList<>();
-    public final List<SnapshotVersion> snapshotVersions = new ArrayList<>();
+    @NotNull
+    public final List<@NotNull MavenVersion> releaseVersions = new ArrayList<>();
+    @NotNull
+    public final List<@NotNull SnapshotVersion> snapshotVersions = new ArrayList<>();
     public MavenVersion releaseVersion;
     public MavenVersion latestVersion;
     public String lastUpdated;
@@ -69,34 +72,34 @@ public class VersionCatalogue {
                 versions = element;
                 break;
             case "release":
-                releaseVersion = MavenVersion.parse(element.getTextContent());
+                this.releaseVersion = MavenVersion.parse(Objects.requireNonNull(element.getTextContent()));
                 break;
             case "latest":
-                latestVersion = MavenVersion.parse(element.getTextContent());
+                this.latestVersion = MavenVersion.parse(Objects.requireNonNull(element.getTextContent()));
                 break;
             case "lastupdated":
-                lastUpdated = element.getTextContent();
+                this.lastUpdated = element.getTextContent();
 
-                if (lastUpdated.length() != 14) {
-                    throw new ConfusedResolverException("Last updated string \"" + lastUpdated + "\" is not following an implemented standard.");
+                if (this.lastUpdated.length() != 14) {
+                    throw new ConfusedResolverException("Last updated string \"" + this.lastUpdated + "\" is not following an implemented standard.");
                 }
 
-                lastUpdateYear = Integer.parseInt(lastUpdated.substring(0, 4));
-                lastUpdateMonth = Integer.parseInt(lastUpdated.substring(4, 6));
-                lastUpdateDay = Integer.parseInt(lastUpdated.substring(6, 8));
-                lastUpdateHour = Integer.parseInt(lastUpdated.substring(8, 10));
-                lastUpdateMinute = Integer.parseInt(lastUpdated.substring(10, 12));
-                lastUpdateSecond = Integer.parseInt(lastUpdated.substring(12, 14));
+                this.lastUpdateYear = Integer.parseInt(this.lastUpdated.substring(0, 4));
+                this.lastUpdateMonth = Integer.parseInt(this.lastUpdated.substring(4, 6));
+                this.lastUpdateDay = Integer.parseInt(this.lastUpdated.substring(6, 8));
+                this.lastUpdateHour = Integer.parseInt(this.lastUpdated.substring(8, 10));
+                this.lastUpdateMinute = Integer.parseInt(this.lastUpdated.substring(10, 12));
+                this.lastUpdateSecond = Integer.parseInt(this.lastUpdated.substring(12, 14));
                 break;
             case "snapshotversions":
                 snapshotVersions = element;
                 break;
             case "version":
                 // Encountered in https://repo1.maven.org/maven2/org/eclipse/core/commands/maven-metadata.xml
-                if (latestVersion != null) {
+                if (this.latestVersion != null) {
                     throw new IllegalStateException();
                 }
-                latestVersion = MavenVersion.parse(element.getTextContent());
+                this.latestVersion = MavenVersion.parse(Objects.requireNonNull(element.getTextContent()));
                 break;
             }
         }
@@ -145,7 +148,7 @@ public class VersionCatalogue {
         if (versions != null) {
             for (Element element : new ChildElementIterable(versions)) {
                 if (element.getTagName().equalsIgnoreCase("version")) {
-                    this.releaseVersions.add(MavenVersion.parse(element.getTextContent()));
+                    this.releaseVersions.add(MavenVersion.parse(Objects.requireNonNull(element.getTextContent())));
                 }
             }
         }
@@ -256,8 +259,9 @@ public class VersionCatalogue {
         return merged;
     }
 
-    public MavenVersion selectVersion(VersionRange range) {
-        List<MavenVersion> recommended = new ArrayList<>(range.getRecommendedVersions());
+    @NotNull
+    public MavenVersion selectVersion(@NotNull VersionRange range) {
+        List<@NotNull MavenVersion> recommended = new ArrayList<>(range.getRecommendedVersions());
         recommended.sort((v1, v2) -> v2.compareTo(v1));
         for (MavenVersion version : recommended) {
             if (this.releaseVersions.contains(version)) {
@@ -269,6 +273,10 @@ public class VersionCatalogue {
                 return v;
             }
         }
-        return range.getRecommended();
+        MavenVersion v = range.getRecommended();
+        if (v == null) {
+            throw new IllegalStateException("No recommended version is defined in version range.");
+        }
+        return v;
     }
 }

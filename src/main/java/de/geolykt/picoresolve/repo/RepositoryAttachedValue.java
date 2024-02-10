@@ -2,6 +2,10 @@ package de.geolykt.picoresolve.repo;
 
 import java.util.Objects;
 
+import org.jetbrains.annotations.Contract;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+
 /**
  * A {@link RepositoryAttachedValue} is - as it's name implies - a value
  * that is attached to a repository. As of now it is used the file downloading
@@ -11,13 +15,14 @@ import java.util.Objects;
  * @param <V> The type of the value
  */
 public class RepositoryAttachedValue<V> {
-
+    @NotNull
     private final V value;
+    @Nullable
     private final MavenRepository repository;
 
-    public RepositoryAttachedValue(V value, MavenRepository repository) {
-        this.value = Objects.requireNonNull(value, "value may not be null.");
+    public RepositoryAttachedValue(@Nullable MavenRepository repository, @NotNull V value) {
         this.repository = repository;
+        this.value = Objects.requireNonNull(value, "value may not be null.");
     }
 
     /**
@@ -26,6 +31,8 @@ public class RepositoryAttachedValue<V> {
      *
      * @return The attached value
      */
+    @NotNull
+    @Contract(pure = true)
     public V getValue() {
         return this.value;
     }
@@ -41,6 +48,8 @@ public class RepositoryAttachedValue<V> {
      *
      * @return The repository.
      */
+    @Nullable
+    @Contract(pure = true)
     public MavenRepository getRepository() {
         return this.repository;
     }

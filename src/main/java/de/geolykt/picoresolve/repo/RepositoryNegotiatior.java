@@ -5,6 +5,9 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 
+import org.jetbrains.annotations.Contract;
+import org.jetbrains.annotations.NotNull;
+
 /**
  * The purpose of a repository negotiator is to negotiate which repository should be used
  * when a file is requested. Furthermore caching and file locking fall under the tasks performed
@@ -40,7 +43,8 @@ public interface RepositoryNegotiatior {
      * @return A {@link CompletableFuture} which upon non-exceptional {@link CompletableFuture#isDone() completion}
      * stores the path where the resolved file is stored locally.
      */
-    public CompletableFuture<RepositoryAttachedValue<Path>> resolveStandard(String path, Executor executor);
+    @NotNull
+    public CompletableFuture<RepositoryAttachedValue<Path>> resolveStandard(@NotNull String path, @NotNull Executor executor);
 
     /**
      * Resolve all relevant maven-metadata.xml files from the repositories and cache them into files.
@@ -74,7 +78,10 @@ public interface RepositoryNegotiatior {
      * @return A {@link CompletableFuture} which upon non-exceptional {@link CompletableFuture#isDone() completion}
      * stores the path where the resolved file is stored locally.
      */
-    public CompletableFuture<List<RepositoryAttachedValue<Path>>> resolveMavenMeta(String path, Executor executor);
+    @NotNull
+    public CompletableFuture<List<RepositoryAttachedValue<Path>>> resolveMavenMeta(@NotNull String path, @NotNull Executor executor);
 
-    public RepositoryNegotiatior addRepository(MavenRepository repo);
+    @NotNull
+    @Contract(mutates = "this", pure = false, value = "null -> fail; !null -> this")
+    public RepositoryNegotiatior addRepository(@NotNull MavenRepository repo);
 }

@@ -3,10 +3,20 @@ package de.geolykt.picoresolve.repo;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 
+import org.jetbrains.annotations.Contract;
+import org.jetbrains.annotations.NotNull;
+
 public interface MavenRepository {
 
-    CompletableFuture<RepositoryAttachedValue<byte[]>> getResource(String path, Executor executor);
+    @NotNull
+    CompletableFuture<RepositoryAttachedValue<byte[]>> getResource(@NotNull String path, @NotNull Executor executor);
+
+    @NotNull
+    @Contract(pure = true)
     String getRepositoryId();
+
+    @NotNull
+    @Contract(pure = true)
     String getPlaintextURL();
 
     /**
@@ -15,5 +25,6 @@ public interface MavenRepository {
      *
      * @return The interval, in milliseconds
      */
+    @Contract(pure = true)
     long getUpdateIntervall();
 }

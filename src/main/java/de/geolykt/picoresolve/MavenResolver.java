@@ -14,6 +14,7 @@ import java.util.ListIterator;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -22,6 +23,8 @@ import java.util.concurrent.Executor;
 import javax.xml.XMLConstants;
 import javax.xml.parsers.DocumentBuilderFactory;
 
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 
@@ -66,35 +69,35 @@ public class MavenResolver {
      */
     public boolean ignoreOptionalDependencies = true;
 
-    public MavenResolver(Path mavenLocal) {
+    public MavenResolver(@NotNull Path mavenLocal) {
         this(mavenLocal, null);
     }
 
-    public MavenResolver(Path mavenLocal, Collection<MavenRepository> repos) {
+    public MavenResolver(@NotNull Path mavenLocal, @Nullable Collection<@NotNull MavenRepository> repos) {
         this.negotiator = new MavenLocalRepositoryNegotiator(mavenLocal);
         if (repos != null) {
             this.addRepositories(repos);
         }
     }
 
-    public MavenResolver addRepositories(Collection<MavenRepository> repos) {
+    public MavenResolver addRepositories(@NotNull Collection<@NotNull MavenRepository> repos) {
         repos.forEach(this::addRepository);
         return this;
     }
 
-    public MavenResolver addRepository(MavenRepository repo) {
+    public MavenResolver addRepository(@NotNull MavenRepository repo) {
         this.negotiator.addRepository(repo);
         return this;
     }
 
-    public MavenResolver addRepositories(MavenRepository... repos) {
+    public MavenResolver addRepositories(@NotNull MavenRepository @NotNull... repos) {
         for (MavenRepository mr : repos) {
             addRepository(mr);
         }
         return this;
     }
 
-    public CompletableFuture<RepositoryAttachedValue<Path>> download(GAV gav, String classifier, String extension, Executor executor) {
+    public CompletableFuture<RepositoryAttachedValue<Path>> download(@NotNull GAV gav, @Nullable String classifier, @NotNull String extension, @NotNull Executor executor) {
         CompletableFuture<RepositoryAttachedValue<Path>> resource;
         if (gav.version().getOriginText().toLowerCase(Locale.ROOT).endsWith("-snapshot")) {
             resource = this.downloadSnapshot(gav, classifier, extension, executor);
@@ -106,7 +109,8 @@ public class MavenResolver {
         return resource;
     }
 
-    private static String applyPlaceholders(String string, int startIndex, Map<String, String> placeholders) {
+    @NotNull
+    private static String applyPlaceholders(@NotNull String string, int startIndex, @NotNull Map<String, String> placeholders) {
         int indexStart = string.indexOf("${", startIndex);
         if (indexStart == -1) {
             return string;
@@ -120,14 +124,15 @@ public class MavenResolver {
         return string.substring(0, indexStart) + replacement + string.substring(indexEnd + 1);
     }
 
-    private static String applyPlaceholders(String string, Map<String, String> placeholders) {
+    @Nullable
+    private static String applyPlaceholders(@Nullable String string, @NotNull Map<String, String> placeholders) {
         if (string == null) {
             return null;
         }
         return MavenResolver.applyPlaceholders(string, 0, placeholders);
     }
 
-    private static void extractProperties(Document project, GAV gav, Map<String, String> out) {
+    private static void extractProperties(@NotNull Document project, @NotNull GAV gav, Map<String, String> out) {
         for (Element elem : new ChildElementIterable(project.getDocumentElement())) {
             // See https://maven.apache.org/pom.html#properties (retrieved SEPT 18th 2022 18:19 CEST)
             // "project.x: A dot (.) notated path in the POM will contain the corresponding element's value."
@@ -154,7 +159,8 @@ public class MavenResolver {
         }
     }
 
-    private CompletableFuture<Document> downloadPom(GAV gav, Executor executor) {
+    @NotNull
+    private CompletableFuture<Document> downloadPom(@NotNull GAV gav, @NotNull Executor executor) {
         return download(gav, null, "pom", executor).thenApply((pathRAV) -> {
             try {
                 Document xmlDoc;
@@ -170,7 +176,8 @@ public class MavenResolver {
         });
     }
 
-    private CompletableFuture<RepositoryAttachedValue<Path>> downloadSimple(GAV gav, String classifier, String extension, Executor executor) {
+    @NotNull
+    private CompletableFuture<RepositoryAttachedValue<Path>> downloadSimple(@NotNull GAV gav, @Nullable String classifier, @NotNull String extension, @NotNull Executor executor) {
         String basePath = gav.group().replace('.', '/') + '/' + gav.artifact() + '/' + gav.version().getOriginText() + '/';
         String path = basePath + gav.artifact() + '-' + gav.version().getOriginText();
         if (classifier != null) {
@@ -180,7 +187,7 @@ public class MavenResolver {
         return this.negotiator.resolveStandard(path, executor);
     }
 
-    private CompletableFuture<RepositoryAttachedValue<Path>> downloadSnapshot(GAV gav, String classifier, String extension, Executor executor) {
+    private CompletableFuture<RepositoryAttachedValue<Path>> downloadSnapshot(@NotNull GAV gav, @Nullable String classifier, @NotNull String extension, @NotNull Executor executor) {
         String basePath = gav.group().replace('.', '/') + '/' + gav.artifact() + '/' + gav.version().getOriginText() + '/';
 
         return ConcurrencyUtil.configureFallback(this.negotiator.resolveMavenMeta(basePath + "maven-metadata.xml", executor).thenCompose(item -> {
@@ -235,14 +242,17 @@ public class MavenResolver {
         });
     }
 
-    private CompletableFuture<DependencyLayer> resolveChildLayer(DependencyLayer layer, Executor executor, Map<VersionlessDependency, DependencyLayerElement> resolveCache) {
+    private CompletableFuture<DependencyLayer> resolveChildLayer(@NotNull DependencyLayer layer, @NotNull Executor executor, @NotNull Map<VersionlessDependency, DependencyLayerElement> resolveCache) {
         if (layer.getChild() != null) {
             throw new IllegalStateException("Child layer already resolved");
         }
         class ChildResolutionContext {
+            @NotNull
             VersionRange range = VersionRange.FREE_RANGE;
             Scope scope;
+            @NotNull
             final List<DependencyEdge> declaringEdges = new ArrayList<>();
+            @NotNull
             final ExclusionContainer<ExclusionContainer<?>> effectiveExclusions = new ExclusionContainer<>(ExclusionMode.ALL);
         }
         Map<VersionlessDependency, ChildResolutionContext> resolveChildren = new HashMap<>();
@@ -283,13 +293,16 @@ public class MavenResolver {
             VersionlessDependency coordinates = entry.getKey();
             ChildResolutionContext resolveContext = entry.getValue();
             futures.add(this.getVersions(coordinates.group(), coordinates.artifact(), executor).thenCompose((catalogue)-> {
-                MavenVersion selected = catalogue.selectVersion(resolveContext.range);
-                if (selected == null) {
+
+                MavenVersion selected;
+                try {
+                    selected = catalogue.selectVersion(resolveContext.range);
+                } catch (RuntimeException e) {
                     System.err.println("Catastrophic resultion failure for " + coordinates + ":" + resolveContext.range);
                     throw new IllegalStateException("Unable to resolve a sensical version for range " + resolveContext.range + " for coordinates " + coordinates);
                 }
                 GAV gav = new GAV(coordinates.group(), coordinates.artifact(), selected);
-                return this.getNode(gav, coordinates.classifier(), coordinates.type(), executor);
+                return this.getNode(gav, coordinates.classifier(), coordinates.getType("jar"), executor);
             }).thenApply((node) -> {
                 DependencyLayerElement element = node.toLayerElement(coordinates.classifier(), coordinates.type(), resolveContext.effectiveExclusions);
                 for (DependencyEdge edge : resolveContext.declaringEdges) {
@@ -310,7 +323,7 @@ public class MavenResolver {
         });
     }
 
-    private CompletableFuture<Void> resolveAllChildren0(DependencyLayer layer, Executor executor, Map<VersionlessDependency, DependencyLayerElement> resolveCache) {
+    private CompletableFuture<Void> resolveAllChildren0(@NotNull DependencyLayer layer, @NotNull Executor executor, @NotNull Map<VersionlessDependency, DependencyLayerElement> resolveCache) {
         System.err.println("Resolving layer with dependency elements " + layer.elements); // TODO Debug statement
 
         return this.resolveChildLayer(layer, executor, resolveCache).thenCompose((child) -> {
@@ -325,7 +338,7 @@ public class MavenResolver {
         });
     }
 
-    public CompletableFuture<Void> resolveAllChildren(DependencyLayer current, Executor executor) {
+    public CompletableFuture<Void> resolveAllChildren(@NotNull DependencyLayer current, @NotNull Executor executor) {
         Map<VersionlessDependency, DependencyLayerElement> resolveCache = new HashMap<>();
         for (DependencyLayer layer = current; layer != null; layer = layer.parent) {
             for (DependencyLayerElement element : layer.elements) {
@@ -335,7 +348,7 @@ public class MavenResolver {
         return this.resolveAllChildren0(current, executor, resolveCache);
     }
 
-    public CompletableFuture<DependencyLayer> resolveChildLayer(DependencyLayer current, Executor executor) {
+    public CompletableFuture<DependencyLayer> resolveChildLayer(@NotNull DependencyLayer current, @NotNull Executor executor) {
         Map<VersionlessDependency, DependencyLayerElement> resolveCache = new HashMap<>();
         for (DependencyLayer layer = current; layer != null; layer = layer.parent) {
             for (DependencyLayerElement element : layer.elements) {
@@ -345,13 +358,13 @@ public class MavenResolver {
         return this.resolveChildLayer(current, executor, resolveCache);
     }
 
-    private CompletableFuture<DependencyContainerNode> getNode(GAV gav, String classifier, String type, Executor executor) {
+    private CompletableFuture<DependencyContainerNode> getNode(@NotNull GAV gav, @Nullable String classifier, @NotNull String type, @NotNull Executor executor) {
         DependencyContainerNode node = this.depdenencyCache.get(gav);
         if (node != null) {
             return CompletableFuture.completedFuture(node);
         }
         return this.downloadPom(gav, executor).thenCompose((xmlDoc) -> {
-            List<Map.Entry<GAV, Document>> list = new ArrayList<>();
+            List<Map.Entry<@NotNull GAV, @NotNull Document>> list = new ArrayList<>();
             list.add(new AbstractMap.SimpleImmutableEntry<>(gav, xmlDoc));
             Element project = xmlDoc.getDocumentElement();
             project.normalize();
@@ -370,7 +383,7 @@ public class MavenResolver {
         });
     }
 
-    private DependencyContainerNode getDependencyNode0(Map<String, String> placeholders, List<Entry<GAV, Document>> poms, DependencyManagementTree dependencyManagement) {
+    private DependencyContainerNode getDependencyNode0(@NotNull Map<String, String> placeholders, List<Entry<@NotNull GAV, @NotNull Document>> poms, @NotNull DependencyManagementTree dependencyManagement) {
         Document xmlDoc = poms.get(0).getValue();
         DependencyContainerNode container = new DependencyContainerNode(poms.get(0).getKey());
         Element project = xmlDoc.getDocumentElement();
@@ -392,8 +405,8 @@ public class MavenResolver {
             String optional = XMLUtil.elementText(dependency, "optional"); // TODO implement
             ExclusionContainer<Exclusion> exclusions = MavenResolver.parseExclusions(XMLUtil.optElement(dependency, "exclusions"), placeholders);
 
-            group = MavenResolver.applyPlaceholders(group, placeholders);
-            artifactId = MavenResolver.applyPlaceholders(artifactId, placeholders);
+            group = Objects.requireNonNull(MavenResolver.applyPlaceholders(group, placeholders));
+            artifactId = Objects.requireNonNull(MavenResolver.applyPlaceholders(artifactId, placeholders));
             version = MavenResolver.applyPlaceholders(version, placeholders);
             scope = MavenResolver.applyPlaceholders(scope, placeholders);
             classifier = MavenResolver.applyPlaceholders(classifier, placeholders);
@@ -430,10 +443,20 @@ public class MavenResolver {
         return container;
     }
 
-    private CompletableFuture<List<Map.Entry<GAV, Document>>> downloadParentPoms(Element parentElement, Executor executor, List<Map.Entry<GAV, Document>> sink) {
+    private CompletableFuture<@NotNull List<Map.Entry<@NotNull GAV, @NotNull Document>>> downloadParentPoms(@NotNull Element parentElement, @NotNull Executor executor, @NotNull List<Map.Entry<@NotNull GAV, @NotNull Document>> sink) {
         String group = XMLUtil.elementText(parentElement, "groupId");
         String artifactId = XMLUtil.elementText(parentElement, "artifactId");
         String version = XMLUtil.elementText(parentElement, "version");
+
+        if (group == null) {
+            return CompletableFuture.failedFuture(new IllegalStateException("groupId missing in parent element"));
+        }
+        if (artifactId == null) {
+            return CompletableFuture.failedFuture(new IllegalStateException("artifactId missing in parent element"));
+        }
+        if (version == null) {
+            return CompletableFuture.failedFuture(new IllegalStateException("version missing in parent element"));
+        }
 
         GAV gav = new GAV(group, artifactId, MavenVersion.parse(version));
 
@@ -452,11 +475,11 @@ public class MavenResolver {
         });
     }
 
-    private static void computePlaceholders(List<Map.Entry<GAV, Document>> poms, int pomIndex, Map<String, String> out) {
+    private static void computePlaceholders(List<Map.Entry<@NotNull GAV, @NotNull Document>> poms, int pomIndex, Map<String, String> out) {
         GAV gav = poms.get(pomIndex).getKey();
         if (!poms.isEmpty()) {
-            for (ListIterator<Map.Entry<GAV, Document>> lit = poms.listIterator(pomIndex); lit.hasNext();) { // TODO chances are we need the inverse order (we used to iterate from the back), so be aware that this may need fixing
-                Map.Entry<GAV, Document> entry = lit.next();
+            for (ListIterator<Map.Entry<@NotNull GAV, @NotNull Document>> lit = poms.listIterator(pomIndex); lit.hasNext();) { // TODO chances are we need the inverse order (we used to iterate from the back), so be aware that this may need fixing
+                Map.Entry<@NotNull GAV, @NotNull Document> entry = lit.next();
                 MavenResolver.extractProperties(entry.getValue(), entry.getKey(), out);
             }
         }
@@ -471,10 +494,10 @@ public class MavenResolver {
         out.put("groupId", gav.group());
     }
 
-    private CompletableFuture<DependencyManagementTree> getDependencyManagementBOMTree(Executor executor, String group, String artifact, VersionRange version, DependencyManagementTree parentNode) {
+    private CompletableFuture<DependencyManagementTree> getDependencyManagementBOMTree(@NotNull Executor executor, @NotNull String group, @NotNull String artifact, @NotNull VersionRange version, @NotNull DependencyManagementTree parentNode) {
         return this.downloadPom(group, artifact, version, executor).thenCompose((entry) -> {
             Document xmlDoc = entry.getValue();
-            List<Map.Entry<GAV, Document>> list = new ArrayList<>();
+            List<Map.Entry<@NotNull GAV, @NotNull Document>> list = new ArrayList<>();
             list.add(entry);
             Element project = xmlDoc.getDocumentElement();
             project.normalize();
@@ -492,7 +515,7 @@ public class MavenResolver {
         });
     }
 
-    private CompletableFuture<DependencyManagementTree> getDependencyManagementTree(Executor executor, List<Map.Entry<GAV, Document>> poms, int pomIndex) {
+    private CompletableFuture<@NotNull DependencyManagementTree> getDependencyManagementTree(@NotNull Executor executor, @NotNull List<Map.Entry<@NotNull GAV, @NotNull Document>> poms, int pomIndex) {
         Map<String, String> placeholders = new HashMap<>();
         MavenResolver.computePlaceholders(poms, pomIndex, placeholders);
 
@@ -532,9 +555,9 @@ public class MavenResolver {
                 String optional = XMLUtil.elementText(dependency, "optional"); // TODO implement
                 ExclusionContainer<Exclusion> exclusions = MavenResolver.parseExclusions(XMLUtil.optElement(dependency, "exclusions"), placeholders);
 
-                group = MavenResolver.applyPlaceholders(group, placeholders);
-                artifactId = MavenResolver.applyPlaceholders(artifactId, placeholders);
-                version = MavenResolver.applyPlaceholders(version, placeholders);
+                group = Objects.requireNonNull(MavenResolver.applyPlaceholders(group, placeholders));
+                artifactId = Objects.requireNonNull(MavenResolver.applyPlaceholders(artifactId, placeholders));
+                version = Objects.requireNonNull(MavenResolver.applyPlaceholders(version, placeholders));
                 scope = MavenResolver.applyPlaceholders(scope, placeholders);
                 classifier = MavenResolver.applyPlaceholders(classifier, placeholders);
                 type = MavenResolver.applyPlaceholders(type, placeholders);
@@ -560,7 +583,7 @@ public class MavenResolver {
         }
     }
 
-    public CompletableFuture<Map.Entry<GAV, RepositoryAttachedValue<Path>>> download(String group, String artifact, VersionRange versionRange, String classifier, String extension, Executor executor) {
+    public CompletableFuture<Map.Entry<@NotNull GAV, RepositoryAttachedValue<Path>>> download(@NotNull String group, @NotNull String artifact, @NotNull VersionRange versionRange, @Nullable String classifier, @NotNull String extension, @NotNull Executor executor) {
         return this.getVersions(group, artifact, executor).thenCompose((catalogue)-> {
             MavenVersion selected = catalogue.selectVersion(versionRange);
             GAV gav = new GAV(group, artifact, selected);
@@ -570,7 +593,7 @@ public class MavenResolver {
         });
     }
 
-    private CompletableFuture<VersionCatalogue> getVersions(String groupId, String artifactId, Executor executor) {
+    private CompletableFuture<VersionCatalogue> getVersions(@NotNull String groupId, @NotNull String artifactId, @NotNull Executor executor) {
         return this.negotiator.resolveMavenMeta(groupId.replace('.', '/') + '/' + artifactId + "/maven-metadata.xml", executor).thenApply((item) -> {
 
             List<VersionCatalogue> catalogues = new ArrayList<>(item.size());
@@ -588,7 +611,7 @@ public class MavenResolver {
         });
     }
 
-    private CompletableFuture<Map.Entry<GAV, Document>> downloadPom(String group, String artifact, VersionRange range, Executor executor) {
+    private CompletableFuture<Map.Entry<@NotNull GAV, @NotNull Document>> downloadPom(@NotNull String group, @NotNull String artifact, @NotNull VersionRange range, @NotNull Executor executor) {
         return this.download(group, artifact, range, null, "pom", executor).thenApply((entry) -> {
             try {
                 Document xmlDoc;
@@ -607,12 +630,13 @@ public class MavenResolver {
         });
     }
 
-    private static ExclusionContainer<Exclusion> parseExclusions(Element element, Map<String, String> placeholders) {
+    @Nullable
+    private static ExclusionContainer<Exclusion> parseExclusions(@Nullable Element element, @NotNull Map<String, String> placeholders) {
         if (element == null) {
             return null;
         }
-        List<Element> exclusions = XMLUtil.getChildElements(element);
-        List<Exclusion> parsed = new ArrayList<>(exclusions.size());
+        List<@NotNull Element> exclusions = XMLUtil.getChildElements(element);
+        List<@NotNull Exclusion> parsed = new ArrayList<>(exclusions.size());
         for (Element exclusion : exclusions) {
             String group = XMLUtil.elementText(exclusion, "groupId");
             String artifact = XMLUtil.elementText(exclusion, "artifactId");

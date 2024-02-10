@@ -10,11 +10,13 @@ import java.util.concurrent.Executor;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
+import org.jetbrains.annotations.NotNull;
+
 public class ConcurrencyUtil {
 
-    public static <T> CompletableFuture<T> schedule(Callable<T> source, Executor executor) {
-        Objects.requireNonNull(source);
-        Objects.requireNonNull(executor);
+    @NotNull
+    public static <T> CompletableFuture<T> schedule(@NotNull Callable<T> source, @NotNull Executor executor) {
+        Objects.requireNonNull(source, "source may not be null");
 
         CompletableFuture<T> cf = new CompletableFuture<>();
         executor.execute(() -> {
@@ -40,7 +42,7 @@ public class ConcurrencyUtil {
             return fallback.get().exceptionally((t2) -> {
                 t2.addSuppressed(t);
                 ConcurrencyUtil.sneakyThrow(t);
-                throw new InternalError();
+                throw new InternalError(t);
             });
         });
     }
@@ -57,8 +59,9 @@ public class ConcurrencyUtil {
         });
     }
 
-    public static <T, C extends Collection<T>> CompletableFuture<C> thenAdd(CompletableFuture<C> collectionProvider, CompletableFuture<T> valueProvider) {
-        @SuppressWarnings("unchecked") // Java generics really aren't the yellow of the egg as we Germans would put it
+    @NotNull
+    public static <T, C extends Collection<T>> CompletableFuture<C> thenAdd(@NotNull CompletableFuture<C> collectionProvider, @NotNull CompletableFuture<T> valueProvider) {
+        @SuppressWarnings({"unchecked", "null"}) // Java generics really aren't the yellow of the egg as we Germans would put it
         StronglyMultiCompletableFuture<Collection<T>> cf = new StronglyMultiCompletableFuture<>((CompletableFuture<Collection<T>>) collectionProvider, valueProvider.thenApply(Collections::singleton));
         return cf.thenApply((list) -> {
             // StronglyMultiCompletableFuture can absorb exceptions. This isn't what we'd like to happen, so we will rethrow in case this occurred.

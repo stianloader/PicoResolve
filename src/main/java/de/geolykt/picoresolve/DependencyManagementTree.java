@@ -5,14 +5,19 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
+import org.jetbrains.annotations.NotNull;
+
 import de.geolykt.picoresolve.exclusion.Exclusion;
 import de.geolykt.picoresolve.exclusion.ExclusionContainer;
 
 class DependencyManagementTree {
 
+    @NotNull
     public static final DependencyManagementTree EMPTY = new DependencyManagementTree();
 
+    @NotNull
     private final List<DependencyManagementTree> imported = new ArrayList<>();
+    @NotNull
     private final Map<VersionlessDependency, DependencyManagementNode> nodes = new ConcurrentHashMap<>();
     private DependencyManagementTree parent;
 
@@ -36,7 +41,7 @@ class DependencyManagementTree {
         this.nodes.put(dep, node);
     }
 
-    public void setParent(DependencyManagementTree parent) {
+    public void setParent(@NotNull DependencyManagementTree parent) {
         if (this == DependencyManagementTree.EMPTY) {
             return;
         }

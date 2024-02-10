@@ -1,6 +1,6 @@
 module de.geolykt.picoresolve {
     requires transitive java.xml;
-    requires static org.jetbrains.annotations;
+    requires transitive static org.jetbrains.annotations;
 
     exports de.geolykt.picoresolve;
     exports de.geolykt.picoresolve.exclusion;

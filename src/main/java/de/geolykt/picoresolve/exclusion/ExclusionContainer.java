@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CopyOnWriteArrayList;
 
+import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
 
 /**
@@ -37,29 +38,34 @@ public class ExclusionContainer<T extends Excluder> implements Excluder {
         ANY;
     }
 
+    @SuppressWarnings("null")
+    @NotNull
     public static final ExclusionContainer<?> EMPTY = new ExclusionContainer<>(ExclusionMode.ALL, Collections.emptyList(), false);
     @SuppressWarnings("unchecked")
+    @NotNull
     public static <T extends Excluder> ExclusionContainer<T> empty() {
         return (ExclusionContainer<T>) EMPTY;
     }
 
+    @NotNull
     private final List<@NotNull T> children = new CopyOnWriteArrayList<>();
+    @NotNull
     private final ExclusionMode mode;
 
     private final boolean mutable;
 
-    public ExclusionContainer(ExclusionMode mode) {
+    public ExclusionContainer(@NotNull ExclusionMode mode) {
         this.mutable = true;
         this.mode = Objects.requireNonNull(mode, "\"mode\" may not be null");
     }
 
-    public ExclusionContainer(ExclusionMode mode, Collection<T> exclusions, boolean mutable) {
+    public ExclusionContainer(@NotNull ExclusionMode mode, @NotNull Collection<@NotNull ? extends T> exclusions, boolean mutable) {
         this.children.addAll(exclusions);
         this.mutable = mutable;
         this.mode = Objects.requireNonNull(mode, "\"mode\" may not be null");
     }
 
-    public ExclusionContainer<T> addChild(T child) {
+    public ExclusionContainer<T> addChild(@NotNull T child) {
         if (!this.mutable) {
             throw new IllegalStateException("Container is not mutable.");
         }
@@ -67,6 +73,8 @@ public class ExclusionContainer<T extends Excluder> implements Excluder {
         return this;
     }
 
+    @Contract(pure = true)
+    @NotNull
     public ExclusionMode getMode() {
         return this.mode;
     }
@@ -93,6 +101,7 @@ public class ExclusionContainer<T extends Excluder> implements Excluder {
         }
     }
 
+    @Contract(pure = true)
     public boolean isMutable() {
         return this.mutable;
     }
