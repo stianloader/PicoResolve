@@ -6,6 +6,8 @@ import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CopyOnWriteArrayList;
 
+import org.jetbrains.annotations.NotNull;
+
 /**
  * An {@link Excluder} that combines multiple {@link Excluder Excluders} into one.
  *
@@ -40,7 +42,8 @@ public class ExclusionContainer<T extends Excluder> implements Excluder {
     public static <T extends Excluder> ExclusionContainer<T> empty() {
         return (ExclusionContainer<T>) EMPTY;
     }
-    private final List<T> children = new CopyOnWriteArrayList<>();
+
+    private final List<@NotNull T> children = new CopyOnWriteArrayList<>();
     private final ExclusionMode mode;
 
     private final boolean mutable;
