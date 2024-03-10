@@ -2,7 +2,8 @@
 target
 # Random junk / debug data I have in my project folder
 *.dat
-test*
+testmvnlocal
+testrepo
 
 # PlantUML generated files
 design/*.png
