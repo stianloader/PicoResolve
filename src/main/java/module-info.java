@@ -1,9 +1,9 @@
-module de.geolykt.picoresolve {
+module org.stianloader.picoresolve {
     requires transitive java.xml;
     requires transitive static org.jetbrains.annotations;
 
-    exports de.geolykt.picoresolve;
-    exports de.geolykt.picoresolve.exclusion;
-    exports de.geolykt.picoresolve.repo;
-    exports de.geolykt.picoresolve.version;
+    exports org.stianloader.picoresolve;
+    exports org.stianloader.picoresolve.exclusion;
+    exports org.stianloader.picoresolve.repo;
+    exports org.stianloader.picoresolve.version;
 }

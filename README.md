@@ -1,3 +1,13 @@
+> [!IMPORTANT]  
+> PicoResolve is open source, but not open contribution. Contributions have to
+> be denied for the time being as this project was created for my high school
+> exams (more specifically as the "Besondere Lernleistung" of my "Abitur").
+>
+> You are still free to report bugs through the usual channels though
+> (including github issues)!
+>
+> I expect to lift the embargo on contributions by August 2024
+
 # PicoResolve
 
 A truly small, fast and asynchronous reimplementation of the maven artifact
@@ -55,24 +65,30 @@ To compile, simply use `mvn install`.
 
 ## Maven
 
-PicoResolve is available as "de.geolykt:picoresolve:1.0.0". As such you can
+**Note: At this moment in time, picoresolve is only available on https://stianloader.org/maven/**
+
+PicoResolve is available as "org.stianloader:picoresolve:1.0.0-a20240421". As such you can
 add PicoResolve to your project the following ways:
 
 ```xml
 <dependency>
-  <groupId>de.geolykt</groupId>
+  <groupId>org.stianloader</groupId>
   <artifactId>picoresolve</artifactId>
-  <version>1.0.0</version>
+  <version>1.0.0-a20240421</version>
 </dependency>
 ```
 
 Under maven
 
 ```groovy
-implementation("de.geolykt:picoresolve:1.0.0")
+implementation("org.stianloader:picoresolve:1.0.0-a20240421")
 ```
 
 Under groovy gradle
+
+
+Note: Please be aware the the above version is a nightly ("indev") release. The stable release
+will be whichever version hits maven central. When that happens is up in the air though.
 
 # Architecture
 

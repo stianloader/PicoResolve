@@ -1,0 +1,31 @@
+@startuml
+title Herunterladen eines Artefakts
+hide footbox
+autoactivate on
+
+actor " " as actor
+participant "resolver:MavenResolver" as resolver
+participant "negotiator:MavenLocalRepositoryNegotiator" as negotiator
+participant "repo:MavenRepository" as repo
+' participant "edge:DependencyEdge" as edge
+
+activate actor
+
+create participant "gav:GAV" as gav
+actor -> gav: new("org.example", "example", "1.0.0")
+return
+
+actor -> resolver: download(gav, null, "jar", Runnable::run)
+	resolver -> resolver: downloadSimple(gav, null, null, Runnable::run)
+		resolver -> negotiator: resolveStandard(basePath, Runnable::run)
+			loop für jedes Repository
+				negotiator -> repo: getResource(basePath, Runnable::run)
+				return {daten}
+			end
+			negotiator -> negotiator: write(daten, pfad)
+			return
+		return {pfad}
+	return {pfad}
+return {pfad}
+
+@enduml

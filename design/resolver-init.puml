@@ -1,0 +1,30 @@
+@startuml
+title Initialisierung des Resolvers
+hide footbox
+autoactivate on
+
+actor " " as actor
+activate actor
+
+create participant "resolver:MavenResolver" as resolver
+actor -> resolver: new(mavenLocal, repos)
+
+
+create participant "negotiator:MavenLocalRepositoryNegotiator" as negotiator
+resolver -> negotiator: new(mavenLocal)
+return
+
+loop für jedes Repository
+	resolver -> resolver: addRepository(repository)
+	resolver -> negotiator: addRepository(repository)
+	return {negotiator}
+	return {resolver}
+	|||
+end
+
+return
+
+' Sadly, doing "deactivate actor" isn't really possible without looking a bit off-place. Hence we'd have to live with a strangely formatted Diagramm
+|||
+
+@enduml

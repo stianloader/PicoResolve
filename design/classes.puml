@@ -1,0 +1,87 @@
+@startuml
+!pragma useIntermediatePackages false
+skinparam genericDisplay old
+hide empty members
+
+package "org.stianloader.picoresolve.repo" {
+	interface MavenRepository {
+		+getResource(path : String, executor : Executor)
+		+getRepositoryId(): String
+		+getPlaintextURL(): String
+		+getUpdateIntervall(): long
+	}
+
+	class URIMavenRepository extends MavenRepository {
+		-base: URI
+		-id: String
+		#getResource0(String: path): byte[]
+	}
+
+	interface RepositoryNegotiatior {
+		+addRepository(MavenRepository: repository) : RepositoryNegotiatior
+		+resolveMavenMeta(String: path, Executor: exeuctor):CompletableFuture<List<RepositoryAttachedValue<Path>>>
+		+resolveStandard(String: path, Executor: executor):CompletableFuture<RepositoryAttachedValue<Path>>
+	}
+
+	class MavenLocalRepositoryNegotiator extends RepositoryNegotiatior {
+		-mavenLocal: Path
+		#write(byte[]: data, Path: to)
+	}
+
+	class RepositoryAttachedValue<V> {
+		-value: V
+		+RepositoryAttachedValue(value: V, repo: MavenRepository)
+	}
+}
+
+package "org.stianloader.picoresolve" {
+	class MavenResolver {
+		-depdenencyCache : ConcurrentMap<GAV, DependencyContainerNode>
+		-ignoreOptionalDependencies : boolean
+		-ignoreTestDependencies : boolean
+		+addRepositories(Collection<MavenRepository>: repos): MavenResolver
+		+addRepositories(MavenRepository[]: repos): MavenResolver
+		+addRepository(MavenRepository: repo): MavenResolver
+		+download(GAV: gav, String: classifier, String: extension, Executor: executor)\n : CompletableFuture<RepositoryAttachedValue<Path>>
+		+download(String: group, String: artifact, VersionRange: versions, String: classifier, String: extension, Executor: executor)\n : CompletableFuture<Map.Entry<GAV, RepositoryAttachedValue<Path>>>
+		+resolveAllChildren(DependencyLayer: layer, Executor: executor) : CompletableFuture<Void>
+		+resolveChildLayer(DependencyLayer: layer, Executor: executor) : CompletableFuture<DependencyLayer>
+	}
+	enum Scope {
+		COMPILE
+		RUNTIME
+		PROVIDED
+		SYSTEM
+		TEST
+	}
+	class DependencyLayer {
+		DependencyLayer(DependencyLayer: parent, List<DependencyLayerElement>: elements)
+	}
+	class DependencyLayerElement {
+		+classifier : String
+		+gav : GAV
+		+type : String
+		+parentExclusions : ExclusionContainer<?>
+	}
+	class DependencyEdge {
+		+artifact : String
+		+classifier : String
+		+edgeExclusion : ExclusionContainer<Exclusion>
+		+group : String
+		+requestedVersion : VersionRange
+		+type : String
+		~resolve(DependencyLayerElement: element)
+		+isResolved() : boolean
+	}
+}
+
+RepositoryAttachedValue *--> "1\n-repository" MavenRepository
+MavenLocalRepositoryNegotiator "*\n-remoteRepositories" <--o MavenRepository
+MavenResolver *--> "1\n-repository" RepositoryNegotiatior
+DependencyLayer "0..1\n-child" -> "0..1\n+parent" DependencyLayer
+DependencyLayerElement "*\n-elements" <--> "0..1\n-layer" DependencyLayer
+DependencyLayerElement "0..1\n-declarer" <--> "*\n-outgoingEdges" DependencyEdge
+DependencyEdge --> "1\n+scope" Scope
+DependencyEdge --> "0..1\n-resolved" DependencyLayerElement
+
+@enduml

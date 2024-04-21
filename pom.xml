@@ -1,11 +1,11 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
-    <groupId>de.geolykt</groupId>
+    <groupId>org.stianloader</groupId>
     <artifactId>picoresolve</artifactId>
     <version>1.0.0</version>
     <name>PicoResolve</name>
     <description>Small, fast &amp; asynchronous yet feature-complete reimplementation of the maven artifact resolver</description>
-    <url>https://github.com/Geolykt/PicoResolve</url>
+    <url>https://github.com/stianloader/PicoResolve</url>
     <inceptionYear>2022</inceptionYear>
 
     <properties>
@@ -14,12 +14,12 @@
     </properties>
 
     <scm>
-        <url>https://github.com/Geolykt/PicoResolve</url>
-        <connection>scm:git:git@github.com:Geolykt/PicoResolve.git</connection>
+        <url>https://github.com/stianloader/PicoResolve</url>
+        <connection>scm:git:git@github.com:stianloader/PicoResolve.git</connection>
     </scm>
 
     <issueManagement>
-        <url>https://github.com/Geolykt/PicoResolve/issues</url>
+        <url>https://github.com/stianloader/PicoResolve/issues</url>
     </issueManagement>
 
     <licenses>

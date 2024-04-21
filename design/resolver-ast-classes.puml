@@ -1,0 +1,44 @@
+@startuml
+!pragma useIntermediatePackages false
+skinparam genericDisplay old
+hide empty members
+'skinparam nodesep 200
+skinparam linetype ortho
+'skinparam ranksep 50
+
+package "org.stianloader.picoresolve" {
+	enum Scope {
+		COMPILE
+		RUNTIME
+		PROVIDED
+		SYSTEM
+		TEST
+	}
+	class DependencyLayer {
+		DependencyLayer(DependencyLayer: parent, List<DependencyLayerElement>: elements)
+	}
+	class DependencyLayerElement {
+		+classifier : String
+		+gav : GAV
+		+type : String
+		+parentExclusions : ExclusionContainer<?>
+	}
+	class DependencyEdge {
+		+artifact : String
+		+classifier : String
+		+edgeExclusion : ExclusionContainer<Exclusion>
+		+group : String
+		+requestedVersion : VersionRange
+		+type : String
+		~resolve(DependencyLayerElement: element)
+		+isResolved() : boolean
+	}
+}
+
+DependencyLayer "0..1\n-child" -> "0..1\n+parent" DependencyLayer
+DependencyLayerElement "*\n-elements" <--> "0..1\n-layer" DependencyLayer
+DependencyLayerElement "0..1\n-declarer" <--> "*\n-outgoingEdges" DependencyEdge
+DependencyEdge --> "1\n+scope" Scope
+DependencyEdge --> "0..1\n-resolved" DependencyLayerElement
+
+@enduml
