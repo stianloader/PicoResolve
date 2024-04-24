@@ -73,10 +73,14 @@ public class MavenResolver {
     }
 
     public MavenResolver(@NotNull Path mavenLocal, @Nullable Collection<@NotNull MavenRepository> repos) {
-        this.negotiator = new MavenLocalRepositoryNegotiator(mavenLocal);
+        this(new MavenLocalRepositoryNegotiator(mavenLocal));
         if (repos != null) {
             this.addRepositories(repos);
         }
+    }
+
+    public MavenResolver(@NotNull RepositoryNegotiatior negotiator) {
+        this.negotiator = negotiator;
     }
 
     public MavenResolver addRepositories(@NotNull Collection<@NotNull MavenRepository> repos) {

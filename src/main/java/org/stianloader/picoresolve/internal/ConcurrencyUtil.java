@@ -47,6 +47,7 @@ public class ConcurrencyUtil {
         });
     }
 
+    @NotNull
     public static <T> CompletableFuture<T> exceptionally(CompletableFuture<T> main, Function<Throwable, T> fn) {
         return main.exceptionally((t) -> {
             T result = fn.apply(t);

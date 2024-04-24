@@ -84,4 +84,31 @@ public interface RepositoryNegotiatior {
     @NotNull
     @Contract(mutates = "this", pure = false, value = "null -> fail; !null -> this")
     public RepositoryNegotiatior addRepository(@NotNull MavenRepository repo);
+
+    /**
+     * Set whether the {@link RepositoryNegotiatior} is permitted to write metadata files for caching
+     * or repository tracking purposes. If the instance is not permitted to write such files,
+     * then it is likely to be necessitated to give up the ability to attach a repository to an
+     * artifact through {@link RepositoryAttachedValue}, that is it's
+     * {@link RepositoryAttachedValue#getRepository() repository value} will more often than not be null.
+     *
+     * <p>The state of this flag has no effect on whether the negotiator is permitted to fetch
+     * artifacts from remote repositories. Nor should it have a direct effect on other policies,
+     * such as the repository refresh interval. However, as the refresh interval can only be handled
+     * with great difficult in the absence of metadata files, the refresh behaviour is likely either
+     * going to be completely absent or be always present. {@link MavenLocalRepositoryNegotiator}
+     * will still proceed reading metadata files and handling them accordingly if they are present
+     * if writing is disabled; however it will not write any new ones nor update any existing ones.
+     *
+     * <p>Disabling metadata is strongly discouraged. It should only be turned off if reducing clutter
+     * is absolutely crucial (e.g. in public-facing maven repositories) and read latencies are low.
+     * Furthermore it is recommended to have no remote repositories, in which case cache metadata
+     * files are of little use.
+     *
+     * @param writeMetadata True to allow writing metadata, false otherwise
+     * @return The current {@link RepositoryNegotiatior} instance, for chaining
+     */
+    @NotNull
+    @Contract(mutates = "this", pure = false, value = "-> this")
+    public RepositoryNegotiatior setWriteCacheMetadata(boolean writeMetadata);
 }

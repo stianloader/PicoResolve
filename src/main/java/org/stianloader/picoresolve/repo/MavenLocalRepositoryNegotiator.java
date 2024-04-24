@@ -40,6 +40,7 @@ public class MavenLocalRepositoryNegotiator implements RepositoryNegotiatior {
     private final Set<String> remoteIds = new HashSet<>();
     @NotNull
     private final List<MavenRepository> remoteRepositories = new ArrayList<>();
+    private boolean writeMetadata = true;
 
     public MavenLocalRepositoryNegotiator(@NotNull Path mavenLocal) {
         this.mavenLocal = Objects.requireNonNull(mavenLocal, "The cache directory defined by \"mavenLocal\" may not be null!");
@@ -57,11 +58,6 @@ public class MavenLocalRepositoryNegotiator implements RepositoryNegotiatior {
     }
 
     @NotNull
-    public Path getLocalCache() {
-        return this.mavenLocal;
-    }
-
-    @NotNull
     @Contract(mutates = "this", pure = false, value = "null -> fail; !null -> this")
     public MavenLocalRepositoryNegotiator addRepository(@NotNull MavenRepository remote) {
         if (this.remoteIds.add(remote.getRepositoryId())) {
@@ -70,6 +66,102 @@ public class MavenLocalRepositoryNegotiator implements RepositoryNegotiatior {
             throw new IllegalStateException("There is already a repository with the id \"" + remote.getRepositoryId() + "\" registered!");
         }
         return this;
+    }
+
+    @NotNull
+    public Path getLocalCache() {
+        return this.mavenLocal;
+    }
+
+    @Override
+    @NotNull
+    public CompletableFuture<List<RepositoryAttachedValue<Path>>> resolveMavenMeta(@NotNull String path, @NotNull Executor executor) {
+        Path parentDirectory = this.mavenLocal.resolve(path).getParent();
+        if (parentDirectory == null) {
+            throw new IllegalStateException("\"path\" might only consist of a slash!");
+        }
+        Path resolverProperties = parentDirectory.resolve("resolver-status.properties");
+
+        if (!path.endsWith("/maven-metadata.xml")) {
+            throw new IllegalArgumentException("This method may not be used to resolve anything but maven-metadata.xml (although it may be in various folders). Instead \"" + path + "\" was used as an input.");
+        }
+
+        List<CompletableFuture<RepositoryAttachedValue<Path>>> futures = new ArrayList<>();
+
+        if (!Files.exists(parentDirectory)) {
+            try {
+                Files.createDirectories(parentDirectory);
+            } catch (IOException ignored) {
+            }
+        } else {
+            Path mvnLocalMeta = parentDirectory.resolve("maven-metadata-local.xml");
+            if (Files.exists(mvnLocalMeta)) {
+                futures.add(CompletableFuture.completedFuture(new RepositoryAttachedValue<>(null, mvnLocalMeta)));
+            }
+        }
+
+        ResolverMetaStatus resolverStatus = ResolverMetaStatus.tryParse(resolverProperties);
+
+        for (MavenRepository remote : this.remoteRepositories) {
+            Path localFile = parentDirectory.resolve("maven-metadata-" + remote.getRepositoryId() + ".xml");
+            Long lastFetch = resolverStatus.getLastFetchTime(remote.getRepositoryId());
+
+            if (lastFetch != null && (lastFetch + remote.getUpdateIntervall()) > System.currentTimeMillis()) {
+                if (resolverStatus.hasErrored(remote.getRepositoryId())) {
+                    continue;
+                } else if (Files.exists(localFile)) {
+                    // The cache is still valid - no need to fetch!
+                    futures.add(CompletableFuture.completedFuture(new RepositoryAttachedValue<>(remote, localFile)));
+                    continue;
+                }
+            }
+            // This future downloads from the remote repository and updates the error timestamp
+            // if it errors while no caches are present.
+            CompletableFuture<RepositoryAttachedValue<byte[]>> fetchFuture = ConcurrencyUtil.exceptionally(
+                    remote.getResource(path, executor),
+                    (ex) -> {
+                        if (Files.exists(localFile)) {
+                            // Don't update the repository fetch timestamp here.
+                            // This is beneficial for when a repository is temporarily down or the host is down too.
+                            // The caches are used later on.
+                            return null;
+                        }
+                        resolverStatus.updateEntryErrored(remote.getRepositoryId(), ex.toString(), System.currentTimeMillis());
+                        return null;
+                    });
+            // This future writes the raw bytes fetched from the remote to disk. It then returns the path the bytes were written to.
+            CompletableFuture<RepositoryAttachedValue<Path>> future = fetchFuture.thenApply((rav) -> {
+                resolverStatus.updateEntrySuccess(remote.getRepositoryId(), System.currentTimeMillis());
+                write(rav.getValue(), localFile);
+                return new RepositoryAttachedValue<>(rav.getRepository(), localFile);
+            });
+            // This future will use pre-existing caches should a download not be possible.
+            // Of course if there are no caches, it will still fail exceptionally.
+            future = ConcurrencyUtil.exceptionally(future, (ex) -> {
+                        if (Files.exists(localFile)) {
+                            return new RepositoryAttachedValue<>(remote, localFile);
+                        } else {
+                            return null;
+                        }
+                    }
+            );
+            futures.add(future);
+        }
+
+        if (futures.isEmpty()) {
+            return CompletableFuture.failedFuture(new IllegalStateException("RepositoryNegotiator has exhausted all available repositories").fillInStackTrace());
+        }
+
+        CompletableFuture<List<RepositoryAttachedValue<Path>>> ret = new StronglyMultiCompletableFuture<>(futures);
+        if (this.writeMetadata) {
+            ret.thenRun(() -> {
+                try {
+                    resolverStatus.write(resolverProperties);
+                } catch (Throwable ignored) {
+                }
+            });
+        }
+        return ret;
     }
 
     @Override
@@ -147,14 +239,22 @@ public class MavenLocalRepositoryNegotiator implements RepositoryNegotiatior {
                 break; // Let's note waste too much CPU time when running with a synchronous executor
             }
         }
-        CompletableFuture<RepositoryAttachedValue<byte[]>> combined = new MultiCompletableFuture<>(futures);
+
+        CompletableFuture<RepositoryAttachedValue<byte[]>> combined;
+        if (!futures.isEmpty()) {
+            combined = new MultiCompletableFuture<>(futures);
+        } else {
+            combined = CompletableFuture.failedFuture(new IOException("There are no remote repositories to fetch the file from and the file is not stored locally.").fillInStackTrace());
+        }
 
         CompletableFuture<RepositoryAttachedValue<Path>> ret = ConcurrencyUtil.exceptionally(combined.thenApply((rav) -> {
             write(rav.getValue(), localFile);
             MavenRepository originRepository = rav.getRepository();
             if (originRepository != null) {
                 repoProps.setSourceRepository(localFile.getFileName().toString(), originRepository.getRepositoryId());
-                repoProps.tryWrite(remoteRepos);
+                if (this.writeMetadata) {
+                    repoProps.tryWrite(remoteRepos);
+                }
             }
             return new RepositoryAttachedValue<>(originRepository, localFile);
         }), (ex) -> {
@@ -163,13 +263,23 @@ public class MavenLocalRepositoryNegotiator implements RepositoryNegotiatior {
             }
             return null;
         });
-        ret.thenRun(() -> {
-            try {
-                lastUpdated.write(lastUpdateFile);
-            } catch (Throwable ignored) {
-            }
-        });
+        if (this.writeMetadata) {
+            ret.thenRun(() -> {
+                try {
+                    lastUpdated.write(lastUpdateFile);
+                } catch (Throwable ignored) {
+                }
+            });
+        }
         return ret;
+    }
+
+    @Override
+    @NotNull
+    @Contract(mutates = "this", pure = false, value = "-> this")
+    public MavenLocalRepositoryNegotiator setWriteCacheMetadata(boolean writeMetadata) {
+        this.writeMetadata = writeMetadata;
+        return this;
     }
 
     protected void write(byte[] data, Path to) {
@@ -206,95 +316,5 @@ public class MavenLocalRepositoryNegotiator implements RepositoryNegotiatior {
                 }
             }
         }
-    }
-
-    @Override
-    @NotNull
-    public CompletableFuture<List<RepositoryAttachedValue<Path>>> resolveMavenMeta(@NotNull String path, @NotNull Executor executor) {
-        Path parentDirectory = this.mavenLocal.resolve(path).getParent();
-        if (parentDirectory == null) {
-            throw new IllegalStateException("\"path\" might only consist of a slash!");
-        }
-        Path resolverProperties = parentDirectory.resolve("resolver-status.properties");
-
-        if (!path.endsWith("/maven-metadata.xml")) {
-            throw new IllegalArgumentException("This method may not be used to resolve anything but maven-metadata.xml (although it may be in various folders). Instead \"" + path + "\" was used as an input.");
-        }
-
-        List<CompletableFuture<RepositoryAttachedValue<Path>>> futures = new ArrayList<>();
-
-        if (!Files.exists(parentDirectory)) {
-            try {
-                Files.createDirectories(parentDirectory);
-            } catch (IOException ignored) {
-            }
-        } else {
-            Path mvnLocalMeta = parentDirectory.resolve("maven-metadata-local.xml");
-            if (Files.exists(mvnLocalMeta)) {
-                futures.add(CompletableFuture.completedFuture(new RepositoryAttachedValue<>(null, mvnLocalMeta)));
-            }
-        }
-
-        ResolverMetaStatus resolverStatus = ResolverMetaStatus.tryParse(resolverProperties);
-
-        for (MavenRepository remote : this.remoteRepositories) {
-            Path localFile = parentDirectory.resolve("maven-metadata-" + remote.getRepositoryId() + ".xml");
-            Long lastFetch = resolverStatus.getLastFetchTime(remote.getRepositoryId());
-
-            if (lastFetch != null && (lastFetch + remote.getUpdateIntervall()) > System.currentTimeMillis()) {
-                if (resolverStatus.hasErrored(remote.getRepositoryId())) {
-                    continue;
-                } else if (Files.exists(localFile)) {
-                    // The cache is still valid - no need to fetch!
-                    futures.add(CompletableFuture.completedFuture(new RepositoryAttachedValue<>(remote, localFile)));
-                    continue;
-                }
-            }
-            // This future downloads from the remote repository and updates the error timestamp
-            // if it errors while no caches are present.
-            CompletableFuture<RepositoryAttachedValue<byte[]>> fetchFuture = ConcurrencyUtil.exceptionally(
-                    remote.getResource(path, executor),
-                    (ex) -> {
-                        if (Files.exists(localFile)) {
-                            // Don't update the repository fetch timestamp here.
-                            // This is beneficial for when a repository is temporarily down or the host is down too.
-                            // The caches are used later on.
-                            return null;
-                        }
-                        resolverStatus.updateEntryErrored(remote.getRepositoryId(), ex.toString(), System.currentTimeMillis());
-                        return null;
-                    });
-            // This future writes the raw bytes fetched from the remote to disk. It then returns the path the bytes were written to.
-            CompletableFuture<RepositoryAttachedValue<Path>> future = fetchFuture.thenApply((rav) -> {
-                        resolverStatus.updateEntrySuccess(remote.getRepositoryId(), System.currentTimeMillis());
-                        write(rav.getValue(), localFile);
-                        return new RepositoryAttachedValue<>(rav.getRepository(), localFile);
-                    }
-            );
-            // This future will use pre-existing caches should a download not be possible.
-            // Of course if there are no caches, it will still fail exceptionally.
-            future = ConcurrencyUtil.exceptionally(future, (ex) -> {
-                        if (Files.exists(localFile)) {
-                            return new RepositoryAttachedValue<>(remote, localFile);
-                        } else {
-                            return null;
-                        }
-                    }
-            );
-            futures.add(future);
-        }
-
-        if (futures.isEmpty()) {
-            return CompletableFuture.failedFuture(new IllegalStateException("RepositoryNegotiator has exhausted all available repositories").fillInStackTrace());
-        }
-
-        CompletableFuture<List<RepositoryAttachedValue<Path>>> ret = new StronglyMultiCompletableFuture<>(futures);
-        ret.thenRun(() -> {
-            try {
-                resolverStatus.write(resolverProperties);
-            } catch (Throwable ignored) {
-            }
-        });
-        return ret;
     }
 }

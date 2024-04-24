@@ -27,6 +27,9 @@ public class MultiCompletableFuture<T> extends CompletableFuture<T> {
 
     public MultiCompletableFuture(List<CompletableFuture<T>> sources) {
         this(sources.toArray(new CompletableFuture[0]));
+        if (sources.isEmpty()) {
+            throw new IllegalStateException("the sources list may not be empty (else it would deadlock and we can't complete either as we don't know an appropriate default value to use)");
+        }
     }
 
     public MultiCompletableFuture(CompletableFuture<T>[] sources) {
