@@ -148,20 +148,32 @@ public class MavenLocalRepositoryNegotiator implements RepositoryNegotiatior {
             futures.add(future);
         }
 
-        if (futures.isEmpty()) {
-            return CompletableFuture.failedFuture(new IllegalStateException("RepositoryNegotiator has exhausted all available repositories").fillInStackTrace());
+        // Fallback in case the file was installed directly to the local maven repository with proper maven metadata
+        // This is a rarer usecase, but one usecase is for example stianloader's nightly-paperpusher where such a repository
+        // needs to be managed.
+        Path directMetadata = parentDirectory.resolve("maven-metadata.xml");
+        if (Files.exists(directMetadata)) {
+            futures.add(CompletableFuture.completedFuture(new RepositoryAttachedValue<>(null, directMetadata)));
         }
 
-        CompletableFuture<List<RepositoryAttachedValue<Path>>> ret = new StronglyMultiCompletableFuture<>(futures);
+        CompletableFuture<List<RepositoryAttachedValue<Path>>> combined;
+        if (futures.isEmpty()) {
+            combined = CompletableFuture.failedFuture(new IllegalStateException("RepositoryNegotiator has exhausted all available repositories").fillInStackTrace());
+        } else {
+            combined = new StronglyMultiCompletableFuture<>(futures);
+        }
+
         if (this.writeMetadata) {
-            ret.thenRun(() -> {
+            combined = combined.thenApply((value) -> {
                 try {
                     resolverStatus.write(resolverProperties);
                 } catch (Throwable ignored) {
                 }
+                return value;
             });
         }
-        return ret;
+
+        return combined;
     }
 
     @Override
