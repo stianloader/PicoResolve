@@ -267,14 +267,22 @@ public class VersionCatalogue {
                 return version;
             }
         }
+
+        MavenVersion newestRelease = null;
         for (MavenVersion v : this.releaseVersions) {
-            if (range.containsVersion(v)) {
-                return v;
+            if (range.containsVersion(v) && (newestRelease == null || v.isNewerThan(newestRelease))) {
+                newestRelease = v;
             }
         }
+
+        if (newestRelease != null) {
+            return newestRelease;
+        }
+
         MavenVersion v = range.getRecommended();
         if (v == null) {
-            throw new IllegalStateException("No recommended version is defined in version range.");
+            // This seemingly strange fallback mainly exists in cases where maven-metadata files are not present or incomplete
+            throw new IllegalStateException("No recommended version is defined in version range and no release version matches the constraints of the version range.");
         }
         return v;
     }
