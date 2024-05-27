@@ -1,6 +1,16 @@
 package org.stianloader.picoresolve.exclusion;
 
-public record Exclusion(String group, String artifact) implements Excluder {
+import java.util.Objects;
+
+public class Exclusion implements Excluder {
+    private final String group;
+    private final String artifact;
+
+    public Exclusion(String group, String artifact) {
+        this.group = group;
+        this.artifact = artifact;
+    }
+
     @Override
     public boolean isExcluding(String group, String artifact) {
         // TODO are wildcards also valid for partial matches? (Whatever that means)
@@ -11,5 +21,19 @@ public record Exclusion(String group, String artifact) implements Excluder {
             return false;
         }
         return true;
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(this.group, this.artifact);
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        if (obj instanceof Exclusion) {
+            return ((Exclusion) obj).artifact.equals(this.artifact) && ((Exclusion) obj).group.equals(this.group);
+        }
+
+        return false;
     }
 }

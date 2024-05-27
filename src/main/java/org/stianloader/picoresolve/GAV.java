@@ -1,5 +1,8 @@
 package org.stianloader.picoresolve;
 
+import java.util.Objects;
+
+import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
 import org.stianloader.picoresolve.version.MavenVersion;
 import org.stianloader.picoresolve.version.VersionRange;
@@ -19,5 +22,51 @@ import org.stianloader.picoresolve.version.VersionRange;
  * that things such as case-sensitivity is important when performing the inevitable {@link MavenVersion#parse(String)}
  * call before invoking the constructor of this class.
  */
-public final record GAV(@NotNull String group, @NotNull String artifact, @NotNull MavenVersion version) {
+public final class GAV {
+    @NotNull
+    private final String artifact;
+    @NotNull
+    private final String group;
+    @NotNull
+    private final MavenVersion version;
+
+    public GAV(@NotNull String group, @NotNull String artifact, @NotNull MavenVersion version) {
+        this.group = group;
+        this.artifact = artifact;
+        this.version = version;
+    }
+
+    @NotNull
+    @Contract(pure = true)
+    public String artifact() {
+        return this.artifact;
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        if (obj instanceof GAV) {
+            GAV other = (GAV) obj;
+            return other.group.equals(this.group)
+                    && other.artifact.equals(this.artifact)
+                    && other.version.equals(this.version);
+        }
+        return false;
+    }
+
+    @NotNull
+    @Contract(pure = true)
+    public String group() {
+        return this.group;
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(this.group, this.artifact, this.version);
+    }
+
+    @NotNull
+    @Contract(pure = true)
+    public MavenVersion version() {
+        return this.version;
+    }
 }

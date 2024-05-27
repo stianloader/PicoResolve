@@ -64,7 +64,8 @@ class DependencyContainerNode {
             if (this == obj) {
                 return true;
             }
-            if (obj instanceof SubdependencyNode other) {
+            if (obj instanceof SubdependencyNode) {
+                SubdependencyNode other = (SubdependencyNode) obj;
                 return Objects.equals(other.group, this.group)
                         && Objects.equals(other.artifact, this.artifact)
                         && Objects.equals(other.classifier, this.classifier)

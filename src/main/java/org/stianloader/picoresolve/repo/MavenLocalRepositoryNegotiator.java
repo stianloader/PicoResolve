@@ -20,6 +20,7 @@ import java.util.concurrent.Executor;
 import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
 import org.stianloader.picoresolve.internal.ConcurrencyUtil;
+import org.stianloader.picoresolve.internal.JavaInterop;
 import org.stianloader.picoresolve.internal.MultiCompletableFuture;
 import org.stianloader.picoresolve.internal.StronglyMultiCompletableFuture;
 import org.stianloader.picoresolve.internal.meta.LastUpdatedFile;
@@ -158,7 +159,7 @@ public class MavenLocalRepositoryNegotiator implements RepositoryNegotiatior {
 
         CompletableFuture<List<RepositoryAttachedValue<Path>>> combined;
         if (futures.isEmpty()) {
-            combined = CompletableFuture.failedFuture(new IllegalStateException("RepositoryNegotiator has exhausted all available repositories").fillInStackTrace());
+            combined = JavaInterop.failedFuture(new IllegalStateException("RepositoryNegotiator has exhausted all available repositories").fillInStackTrace());
         } else {
             combined = new StronglyMultiCompletableFuture<>(futures);
         }
@@ -189,7 +190,7 @@ public class MavenLocalRepositoryNegotiator implements RepositoryNegotiatior {
         RemoteRepositoryProperties repoProps = RemoteRepositoryProperties.tryRead(remoteRepos);
         Optional<String> sourceRepo = repoProps.getSourceRepository(localFile.getFileName().toString());
 
-        if (localFilePresent && sourceRepo.isEmpty()) {
+        if (localFilePresent && !sourceRepo.isPresent()) {
             // Maven local
             return CompletableFuture.completedFuture(new RepositoryAttachedValue<>(null, localFile));
         }
@@ -256,7 +257,7 @@ public class MavenLocalRepositoryNegotiator implements RepositoryNegotiatior {
         if (!futures.isEmpty()) {
             combined = new MultiCompletableFuture<>(futures);
         } else {
-            combined = CompletableFuture.failedFuture(new IOException("There are no remote repositories to fetch the file from and the file is not stored locally.").fillInStackTrace());
+            combined = JavaInterop.failedFuture(new IOException("There are no remote repositories to fetch the file from and the file is not stored locally.").fillInStackTrace());
         }
 
         CompletableFuture<RepositoryAttachedValue<Path>> ret = ConcurrencyUtil.exceptionally(combined.thenApply((rav) -> {

@@ -9,6 +9,7 @@ import java.util.Locale;
 
 import org.jetbrains.annotations.NotNull;
 import org.stianloader.picoresolve.internal.ConfusedResolverException;
+import org.stianloader.picoresolve.internal.JavaInterop;
 
 /**
  * Object that represents a version that maven can understand and compare.
@@ -115,7 +116,7 @@ public class MavenVersion implements Comparable<MavenVersion> {
                 } else {
                     tokens.add(versionString.substring(lastSeperator + 1, i));
                 }
-                tokens.add(Character.toString(codepoint));
+                tokens.add(JavaInterop.codepointToString(codepoint));
                 lastSeperator = i;
             } else if ((lastSeperator + 1) != i) {
                 if (!wasDigit) {
@@ -188,7 +189,7 @@ public class MavenVersion implements Comparable<MavenVersion> {
         for (MavenVersionPart part : parts) {
             builder2.append(part.toString());
         }
-        if (!builder2.isEmpty()) {
+        if (builder2.length() != 0) {
             builder2.deleteCharAt(0);
             builder.append(builder2);
         }
@@ -211,7 +212,8 @@ public class MavenVersion implements Comparable<MavenVersion> {
 
     @Override
     public boolean equals(Object obj) {
-        if (obj instanceof MavenVersion other) {
+        if (obj instanceof MavenVersion) {
+            MavenVersion other = (MavenVersion) obj;
             if (other.parts.size() != parts.size()) {
                 return false;
             }

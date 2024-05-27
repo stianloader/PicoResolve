@@ -37,8 +37,9 @@ public class ConcurrencyUtil {
         throw (T) t;
     }
 
+    @NotNull
     public static <T> CompletableFuture<T> configureFallback(CompletableFuture<T> mains, Supplier<CompletableFuture<T>> fallback) {
-        return mains.exceptionallyCompose((t) -> {
+        return JavaInterop.exceptionallyCompose(mains, (t) -> {
             return fallback.get().exceptionally((t2) -> {
                 t2.addSuppressed(t);
                 ConcurrencyUtil.sneakyThrow(t);

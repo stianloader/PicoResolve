@@ -23,24 +23,162 @@ import org.xml.sax.SAXException;
 
 public class VersionCatalogue {
 
-    public static record SnapshotVersion(String extension, String classifier, String version, String lastUpdated) {
+    public static class SnapshotVersion {
+        private final String classifier;
+        private final String extension;
+        private final String lastUpdated;
+        private final String version;
+
+        public SnapshotVersion(String extension, String classifier, String version, String lastUpdated) {
+            this.extension = extension;
+            this.classifier = classifier;
+            this.version = version;
+            this.lastUpdated = lastUpdated;
+        }
+
+        public String classifier() {
+            return this.classifier;
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            if (obj instanceof SnapshotVersion) {
+                SnapshotVersion other = (SnapshotVersion) obj;
+                return this.extension.equals(other.extension)
+                        && this.classifier.equals(other.classifier)
+                        && this.version.equals(other.version)
+                        && this.lastUpdated.equals(other.lastUpdated);
+            }
+            return false;
+        }
+
+        public String extension() {
+            return this.extension;
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(this.extension, this.classifier, this.version, this.lastUpdated);
+        }
+
+        public String lastUpdated() {
+            return this.lastUpdated;
+        }
+
+        public String version() {
+            return this.version;
+        }
     }
 
-    @NotNull
-    public final List<@NotNull MavenVersion> releaseVersions = new ArrayList<>();
-    @NotNull
-    public final List<@NotNull SnapshotVersion> snapshotVersions = new ArrayList<>();
-    public MavenVersion releaseVersion;
-    public MavenVersion latestVersion;
-    public String lastUpdated;
+    public static VersionCatalogue merge(Iterable<VersionCatalogue> sources) {
+        VersionCatalogue merged = new VersionCatalogue();
+        for (VersionCatalogue source : sources) {
+            for (MavenVersion ver : source.releaseVersions) {
+                if (!merged.releaseVersions.contains(ver)) {
+                    merged.releaseVersions.add(ver);
+                }
+            }
+            for (SnapshotVersion ver : source.snapshotVersions) {
+                SnapshotVersion conflict = null;
+                for (SnapshotVersion old : merged.snapshotVersions) {
+                    if (Objects.equals(old.classifier, ver.classifier)
+                            && old.extension.equals(ver.extension)) {
+                        conflict = old;
+                        break;
+                    }
+                }
+                if (conflict == null) {
+                    merged.snapshotVersions.add(ver);
+                } else {
+                    if (conflict.lastUpdated.compareTo(ver.lastUpdated) < 0) {
+                        // Conflict was updated at an earlier date
+                        merged.snapshotVersions.remove(conflict);
+                        merged.snapshotVersions.add(ver);
+                        continue;
+                    }
+                }
+            }
+            if (source.lastUpdateYear > merged.lastUpdateYear) {
+                merged.lastUpdateYear = source.lastUpdateYear;
+                merged.lastUpdateMonth = source.lastUpdateMonth;
+                merged.lastUpdateDay = source.lastUpdateDay;
+                merged.lastUpdateHour = source.lastUpdateHour;
+                merged.lastUpdateMinute = source.lastUpdateMinute;
+                merged.lastUpdateSecond = source.lastUpdateSecond;
+            } else if (source.lastUpdateYear < merged.lastUpdateYear) {
+                // Do nothing
+            } else if (source.lastUpdateMonth > merged.lastUpdateMonth) {
+                merged.lastUpdateMonth = source.lastUpdateMonth;
+                merged.lastUpdateDay = source.lastUpdateDay;
+                merged.lastUpdateHour = source.lastUpdateHour;
+                merged.lastUpdateMinute = source.lastUpdateMinute;
+                merged.lastUpdateSecond = source.lastUpdateSecond;
+            } else if (source.lastUpdateMonth < merged.lastUpdateMonth) {
+                // Do nothing
+            } else if (source.lastUpdateDay > merged.lastUpdateDay) {
+                merged.lastUpdateDay = source.lastUpdateDay;
+                merged.lastUpdateHour = source.lastUpdateHour;
+                merged.lastUpdateMinute = source.lastUpdateMinute;
+                merged.lastUpdateSecond = source.lastUpdateSecond;
+            } else if (source.lastUpdateDay < merged.lastUpdateDay) {
+                // Do nothing
+            } else if (source.lastUpdateHour > merged.lastUpdateHour) {
+                merged.lastUpdateHour = source.lastUpdateHour;
+                merged.lastUpdateMinute = source.lastUpdateMinute;
+                merged.lastUpdateSecond = source.lastUpdateSecond;
+            } else if (source.lastUpdateHour < merged.lastUpdateHour) {
+                // Do nothing
+            } else if (source.lastUpdateMinute > merged.lastUpdateMinute) {
+                merged.lastUpdateMinute = source.lastUpdateMinute;
+                merged.lastUpdateSecond = source.lastUpdateSecond;
+            } else if (source.lastUpdateMinute < merged.lastUpdateMinute) {
+                // Do nothing
+            } else if (source.lastUpdateSecond > merged.lastUpdateSecond) {
+                merged.lastUpdateSecond = source.lastUpdateSecond;
+            } else if (source.lastUpdateSecond < merged.lastUpdateSecond) {
+                // Do nothing
+            }
+
+            if (merged.latestVersion == null) {
+                merged.latestVersion = source.latestVersion;
+            } else if (source.latestVersion != null && source.latestVersion.isNewerThan(merged.latestVersion)) {
+                merged.latestVersion = source.latestVersion;
+            }
+
+            if (merged.releaseVersion == null) {
+                merged.releaseVersion = source.releaseVersion;
+            } else if (source.releaseVersion != null && source.releaseVersion.isNewerThan(merged.releaseVersion)) {
+                merged.releaseVersion = source.releaseVersion;
+            }
+
+            if (merged.fallbackSnapshotVersion != null) {
+                merged.fallbackSnapshotVersion = source.fallbackSnapshotVersion;
+            }
+
+            merged.localCopy |= source.localCopy;
+        }
+
+        merged.lastUpdated = String.format("%04d%02d%02d%02d%02d%02d", merged.lastUpdateYear, merged.lastUpdateMonth,
+                merged.lastUpdateDay, merged.lastUpdateHour, merged.lastUpdateMinute, merged.lastUpdateSecond);
+        return merged;
+    }
+
     public String fallbackSnapshotVersion;
-    public boolean localCopy;
-    public int lastUpdateYear;
-    public int lastUpdateMonth;
+    public String lastUpdated;
     public int lastUpdateDay;
     public int lastUpdateHour;
     public int lastUpdateMinute;
+    public int lastUpdateMonth;
     public int lastUpdateSecond;
+    public int lastUpdateYear;
+    public MavenVersion latestVersion;
+    public boolean localCopy;
+    public MavenVersion releaseVersion;
+    @NotNull
+    public final List<@NotNull MavenVersion> releaseVersions = new ArrayList<>();
+
+    @NotNull
+    public final List<@NotNull SnapshotVersion> snapshotVersions = new ArrayList<>();
 
     private VersionCatalogue() {
         // No-arguments constructor needed for the #merge method
@@ -163,99 +301,6 @@ public class VersionCatalogue {
                 }
             }
         }
-    }
-
-    public static VersionCatalogue merge(Iterable<VersionCatalogue> sources) {
-        VersionCatalogue merged = new VersionCatalogue();
-        for (VersionCatalogue source : sources) {
-            for (MavenVersion ver : source.releaseVersions) {
-                if (!merged.releaseVersions.contains(ver)) {
-                    merged.releaseVersions.add(ver);
-                }
-            }
-            for (SnapshotVersion ver : source.snapshotVersions) {
-                SnapshotVersion conflict = null;
-                for (SnapshotVersion old : merged.snapshotVersions) {
-                    if (Objects.equals(old.classifier, ver.classifier)
-                            && old.extension.equals(ver.extension)) {
-                        conflict = old;
-                        break;
-                    }
-                }
-                if (conflict == null) {
-                    merged.snapshotVersions.add(ver);
-                } else {
-                    if (conflict.lastUpdated.compareTo(ver.lastUpdated) < 0) {
-                        // Conflict was updated at an earlier date
-                        merged.snapshotVersions.remove(conflict);
-                        merged.snapshotVersions.add(ver);
-                        continue;
-                    }
-                }
-            }
-            if (source.lastUpdateYear > merged.lastUpdateYear) {
-                merged.lastUpdateYear = source.lastUpdateYear;
-                merged.lastUpdateMonth = source.lastUpdateMonth;
-                merged.lastUpdateDay = source.lastUpdateDay;
-                merged.lastUpdateHour = source.lastUpdateHour;
-                merged.lastUpdateMinute = source.lastUpdateMinute;
-                merged.lastUpdateSecond = source.lastUpdateSecond;
-            } else if (source.lastUpdateYear < merged.lastUpdateYear) {
-                // Do nothing
-            } else if (source.lastUpdateMonth > merged.lastUpdateMonth) {
-                merged.lastUpdateMonth = source.lastUpdateMonth;
-                merged.lastUpdateDay = source.lastUpdateDay;
-                merged.lastUpdateHour = source.lastUpdateHour;
-                merged.lastUpdateMinute = source.lastUpdateMinute;
-                merged.lastUpdateSecond = source.lastUpdateSecond;
-            } else if (source.lastUpdateMonth < merged.lastUpdateMonth) {
-                // Do nothing
-            } else if (source.lastUpdateDay > merged.lastUpdateDay) {
-                merged.lastUpdateDay = source.lastUpdateDay;
-                merged.lastUpdateHour = source.lastUpdateHour;
-                merged.lastUpdateMinute = source.lastUpdateMinute;
-                merged.lastUpdateSecond = source.lastUpdateSecond;
-            } else if (source.lastUpdateDay < merged.lastUpdateDay) {
-                // Do nothing
-            } else if (source.lastUpdateHour > merged.lastUpdateHour) {
-                merged.lastUpdateHour = source.lastUpdateHour;
-                merged.lastUpdateMinute = source.lastUpdateMinute;
-                merged.lastUpdateSecond = source.lastUpdateSecond;
-            } else if (source.lastUpdateHour < merged.lastUpdateHour) {
-                // Do nothing
-            } else if (source.lastUpdateMinute > merged.lastUpdateMinute) {
-                merged.lastUpdateMinute = source.lastUpdateMinute;
-                merged.lastUpdateSecond = source.lastUpdateSecond;
-            } else if (source.lastUpdateMinute < merged.lastUpdateMinute) {
-                // Do nothing
-            } else if (source.lastUpdateSecond > merged.lastUpdateSecond) {
-                merged.lastUpdateSecond = source.lastUpdateSecond;
-            } else if (source.lastUpdateSecond < merged.lastUpdateSecond) {
-                // Do nothing
-            }
-
-            if (merged.latestVersion == null) {
-                merged.latestVersion = source.latestVersion;
-            } else if (source.latestVersion != null && source.latestVersion.isNewerThan(merged.latestVersion)) {
-                merged.latestVersion = source.latestVersion;
-            }
-
-            if (merged.releaseVersion == null) {
-                merged.releaseVersion = source.releaseVersion;
-            } else if (source.releaseVersion != null && source.releaseVersion.isNewerThan(merged.releaseVersion)) {
-                merged.releaseVersion = source.releaseVersion;
-            }
-
-            if (merged.fallbackSnapshotVersion != null) {
-                merged.fallbackSnapshotVersion = source.fallbackSnapshotVersion;
-            }
-
-            merged.localCopy |= source.localCopy;
-        }
-
-        merged.lastUpdated = String.format("%04d%02d%02d%02d%02d%02d", merged.lastUpdateYear, merged.lastUpdateMonth,
-                merged.lastUpdateDay, merged.lastUpdateHour, merged.lastUpdateMinute, merged.lastUpdateSecond);
-        return merged;
     }
 
     @NotNull

@@ -3,6 +3,7 @@ package org.stianloader.picoresolve.version;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -141,33 +142,59 @@ public class VersionRange {
 
     // lower bound is the oldest accepted version (for a closed interval that is)
     // upper bound is the newest accepted version (for a closed interval that is)
-    private static record Interval(MavenVersion lowerBound, MavenVersion upperBound, IntervalType type) implements VersionSet {
+    private static class Interval implements VersionSet {
+        private final MavenVersion lowerBound;
+        private final MavenVersion upperBound;
+        private final IntervalType type;
+
+        public Interval(MavenVersion lowerBound, MavenVersion upperBound, IntervalType type) {
+            this.lowerBound = lowerBound;
+            this.upperBound = upperBound;
+            this.type = type;
+        }
+
         @Override
         public boolean contains(MavenVersion version) {
-            if (type == IntervalType.CLOSED) {
-                return !version.isNewerThan(upperBound) && !lowerBound.isNewerThan(version);
-            } else if (type == IntervalType.UPPER_OPEN) {
-                return upperBound.isNewerThan(version) && version.isNewerThan(lowerBound);
-            } else if (type == IntervalType.LOWER_OPEN) {
-                return !version.isNewerThan(upperBound) && version.isNewerThan(lowerBound);
+            if (this.type == IntervalType.CLOSED) {
+                return !version.isNewerThan(this.upperBound) && !this.lowerBound.isNewerThan(version);
+            } else if (this.type == IntervalType.UPPER_OPEN) {
+                return this.upperBound.isNewerThan(version) && version.isNewerThan(this.lowerBound);
+            } else if (this.type == IntervalType.LOWER_OPEN) {
+                return !version.isNewerThan(this.upperBound) && version.isNewerThan(this.lowerBound);
             } else {
                 // type is IntervalType.BOTH_OPEN
-                return version.isNewerThan(lowerBound) && !upperBound.isNewerThan(version);
+                return version.isNewerThan(this.lowerBound) && !this.upperBound.isNewerThan(version);
             }
         }
 
         @Override
         public String toString() {
-            if (type == IntervalType.CLOSED) {
-                return '[' + lowerBound.toString() + ',' + upperBound + ']';
-            } else if (type == IntervalType.UPPER_OPEN) {
-                return '[' + lowerBound.toString() + ',' + upperBound + ')';
-            } else if (type == IntervalType.LOWER_OPEN) {
-                return '(' + lowerBound.toString() + ',' + upperBound + ']';
+            if (this.type == IntervalType.CLOSED) {
+                return '[' + this.lowerBound.toString() + ',' + this.upperBound + ']';
+            } else if (this.type == IntervalType.UPPER_OPEN) {
+                return '[' + this.lowerBound.toString() + ',' + this.upperBound + ')';
+            } else if (this.type == IntervalType.LOWER_OPEN) {
+                return '(' + this.lowerBound.toString() + ',' + this.upperBound + ']';
             } else {
                 // type is IntervalType.BOTH_OPEN
-                return '(' + lowerBound.toString() + ',' + upperBound + ')';
+                return '(' + this.lowerBound.toString() + ',' + this.upperBound + ')';
             }
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(this.lowerBound, this.upperBound, this.type);
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            if (obj instanceof Interval) {
+                Interval other = (Interval) obj;
+                return other.lowerBound.equals(this.lowerBound)
+                        && other.upperBound.equals(this.upperBound)
+                        && other.type.equals(this.type);
+            }
+            return false;
         }
     }
 
@@ -179,33 +206,56 @@ public class VersionRange {
     }
 
     // Basically an interval where the other bound is infinity.
-    private static record Edge(MavenVersion edgeVersion, EdgeType type) implements VersionSet {
+    private static class Edge implements VersionSet {
+        private final MavenVersion edgeVersion;
+        private final EdgeType type;
+
+        public Edge(MavenVersion edgeVersion, EdgeType type) {
+            this.edgeVersion = edgeVersion;
+            this.type = type;
+        }
+
         @Override
         public boolean contains(MavenVersion version) {
-            if (type == EdgeType.UP_TO) {
-                return !version.isNewerThan(edgeVersion);
-            } else if (type == EdgeType.UNDER) {
-                return edgeVersion.isNewerThan(version);
-            } else if (type == EdgeType.NOT_UNDER) {
-                return !edgeVersion.isNewerThan(version);
+            if (this.type == EdgeType.UP_TO) {
+                return !version.isNewerThan(this.edgeVersion);
+            } else if (this.type == EdgeType.UNDER) {
+                return this.edgeVersion.isNewerThan(version);
+            } else if (this.type == EdgeType.NOT_UNDER) {
+                return !this.edgeVersion.isNewerThan(version);
             } else {
                 // Type is EdgeType.ABOVE
-                return version.isNewerThan(edgeVersion);
+                return version.isNewerThan(this.edgeVersion);
             }
         }
 
         @Override
         public String toString() {
-            if (type == EdgeType.UP_TO) {
-                return "(," + edgeVersion + ']';
-            } else if (type == EdgeType.UNDER) {
-                return "(," + edgeVersion + ')';
-            } else if (type == EdgeType.NOT_UNDER) {
-                return "[" + edgeVersion + ",)";
+            if (this.type == EdgeType.UP_TO) {
+                return "(," + this.edgeVersion + ']';
+            } else if (this.type == EdgeType.UNDER) {
+                return "(," + this.edgeVersion + ')';
+            } else if (this.type == EdgeType.NOT_UNDER) {
+                return "[" + this.edgeVersion + ",)";
             } else {
                 // Type is EdgeType.ABOVE
-                return "(" + edgeVersion + ",)";
+                return "(" + this.edgeVersion + ",)";
             }
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            if (obj instanceof Edge) {
+                Edge other = (Edge) obj;
+                return other.edgeVersion.equals(this.edgeVersion) && other.type.equals(this.type);
+            }
+
+            return false;
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(this.edgeVersion, this.type);
         }
     }
 

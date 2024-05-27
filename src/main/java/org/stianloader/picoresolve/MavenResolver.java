@@ -32,6 +32,7 @@ import org.stianloader.picoresolve.exclusion.Exclusion;
 import org.stianloader.picoresolve.exclusion.ExclusionContainer;
 import org.stianloader.picoresolve.exclusion.ExclusionContainer.ExclusionMode;
 import org.stianloader.picoresolve.internal.ConcurrencyUtil;
+import org.stianloader.picoresolve.internal.JavaInterop;
 import org.stianloader.picoresolve.internal.StronglyMultiCompletableFuture;
 import org.stianloader.picoresolve.internal.XMLUtil;
 import org.stianloader.picoresolve.internal.XMLUtil.ChildElementIterable;
@@ -452,13 +453,13 @@ public class MavenResolver {
         String version = XMLUtil.elementText(parentElement, "version");
 
         if (group == null) {
-            return CompletableFuture.failedFuture(new IllegalStateException("groupId missing in parent element"));
+            return JavaInterop.failedFuture(new IllegalStateException("groupId missing in parent element"));
         }
         if (artifactId == null) {
-            return CompletableFuture.failedFuture(new IllegalStateException("artifactId missing in parent element"));
+            return JavaInterop.failedFuture(new IllegalStateException("artifactId missing in parent element"));
         }
         if (version == null) {
-            return CompletableFuture.failedFuture(new IllegalStateException("version missing in parent element"));
+            return JavaInterop.failedFuture(new IllegalStateException("version missing in parent element"));
         }
 
         GAV gav = new GAV(group, artifactId, MavenVersion.parse(version));

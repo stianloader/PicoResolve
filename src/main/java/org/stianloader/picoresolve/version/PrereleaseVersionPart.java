@@ -4,6 +4,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 import org.stianloader.picoresolve.internal.ConfusedResolverException;
+import org.stianloader.picoresolve.internal.JavaInterop;
 
 final class PrereleaseVersionPart implements MavenVersionPart {
 
@@ -24,7 +25,8 @@ final class PrereleaseVersionPart implements MavenVersionPart {
         if (o instanceof QualifierVersionPart) {
             return -1; // Pre-release version parts are always less recent than qualifiers
         }
-        if (o instanceof PrereleaseVersionPart other) {
+        if (o instanceof PrereleaseVersionPart) {
+            PrereleaseVersionPart other = (PrereleaseVersionPart) o;
             if (other.prefixCodepoint != this.prefixCodepoint) {
                 if (this.prefixCodepoint == '.' && other.prefixCodepoint == '-') {
                     // '.' is less than '-' for qualifiers
@@ -38,22 +40,22 @@ final class PrereleaseVersionPart implements MavenVersionPart {
             }
             return QUALIFIER_VALUES.get(qualifier).compareTo(QUALIFIER_VALUES.get(other.qualifier));
         }
-        throw new IllegalArgumentException("Cannot compare a prerelease version part to a " + o.getClass().descriptorString());
+        throw new IllegalArgumentException("Cannot compare a prerelease version part to a " + o.getClass().getTypeName());
     }
 
     @Override
     public int getPrefixCodepoint() {
-        return prefixCodepoint;
+        return this.prefixCodepoint;
     }
 
     @Override
     public String stringifyContent() {
-        return qualifier;
+        return this.qualifier;
     }
 
     @Override
     public String toString() {
-        return Character.toString(getPrefixCodepoint()) + stringifyContent();
+        return JavaInterop.codepointToString(this.getPrefixCodepoint()) + this.stringifyContent();
     }
 
     static {
