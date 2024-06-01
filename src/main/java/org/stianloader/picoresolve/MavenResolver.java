@@ -302,7 +302,6 @@ public class MavenResolver {
                 try {
                     selected = catalogue.selectVersion(resolveContext.range);
                 } catch (RuntimeException e) {
-                    System.err.println("Catastrophic resultion failure for " + coordinates + ":" + resolveContext.range);
                     throw new IllegalStateException("Unable to resolve a sensical version for range " + resolveContext.range + " for coordinates " + coordinates);
                 }
                 GAV gav = new GAV(coordinates.group(), coordinates.artifact(), selected);
@@ -328,8 +327,6 @@ public class MavenResolver {
     }
 
     private CompletableFuture<Void> resolveAllChildren0(@NotNull DependencyLayer layer, @NotNull Executor executor, @NotNull Map<VersionlessDependency, DependencyLayerElement> resolveCache) {
-        System.err.println("Resolving layer with dependency elements " + layer.elements); // TODO Debug statement
-
         return this.resolveChildLayer(layer, executor, resolveCache).thenCompose((child) -> {
             if (child == null) {
                 return CompletableFuture.completedFuture(null);

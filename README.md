@@ -67,21 +67,21 @@ To compile, simply use `mvn install`.
 
 **Note: At this moment in time, picoresolve is only available on https://stianloader.org/maven/**
 
-PicoResolve is available as "org.stianloader:picoresolve:1.0.0-a20240527". As such you can
+PicoResolve is available as "org.stianloader:picoresolve:1.0.0-a20240601". As such you can
 add PicoResolve to your project the following ways:
 
 ```xml
 <dependency>
   <groupId>org.stianloader</groupId>
   <artifactId>picoresolve</artifactId>
-  <version>1.0.0-a20240527</version>
+  <version>1.0.0-a20240601</version>
 </dependency>
 ```
 
 Under maven
 
 ```groovy
-implementation("org.stianloader:picoresolve:1.0.0-a20240527")
+implementation("org.stianloader:picoresolve:1.0.0-a20240601")
 ```
 
 Under groovy gradle

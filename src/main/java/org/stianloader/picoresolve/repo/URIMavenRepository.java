@@ -32,7 +32,6 @@ public class URIMavenRepository implements MavenRepository {
 
     protected byte @NotNull[] getResource0(@NotNull String path) throws Exception {
         URI resolved = this.base.resolve(path);
-        System.out.println("Downloading " + resolved);
         URLConnection connection = resolved.toURL().openConnection();
         if (connection instanceof HttpURLConnection) {
             HttpURLConnection httpUrlConn = (HttpURLConnection) connection;
