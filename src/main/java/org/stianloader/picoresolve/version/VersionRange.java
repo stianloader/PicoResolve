@@ -89,6 +89,10 @@ public class VersionRange {
                             // Most likely [version]
                             sets.add(new PinnedVersion(MavenVersion.parse(token.substring(1, token.length() - 1))));
                         } else {
+                            // Most likely a single edge version string such as '(0.5', '0.4)' or similar.
+                            // That being said, these version strings are not supported by maven from the looks of it
+                            // so they are left open for now.
+                            // The proper way to define these strings is using '(0.5,]', '(,0.4)' or similar
                             throw new AssertionError(token + "---" + string);
                         }
                     } else {
@@ -158,12 +162,12 @@ public class VersionRange {
             if (this.type == IntervalType.CLOSED) {
                 return !version.isNewerThan(this.upperBound) && !this.lowerBound.isNewerThan(version);
             } else if (this.type == IntervalType.UPPER_OPEN) {
-                return this.upperBound.isNewerThan(version) && version.isNewerThan(this.lowerBound);
+                return this.upperBound.isNewerThan(version) && !this.lowerBound.isNewerThan(version);
             } else if (this.type == IntervalType.LOWER_OPEN) {
                 return !version.isNewerThan(this.upperBound) && version.isNewerThan(this.lowerBound);
             } else {
                 // type is IntervalType.BOTH_OPEN
-                return version.isNewerThan(this.lowerBound) && !this.upperBound.isNewerThan(version);
+                return version.isNewerThan(this.lowerBound) && this.upperBound.isNewerThan(version);
             }
         }
 
