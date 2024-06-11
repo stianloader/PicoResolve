@@ -69,4 +69,9 @@ public final class GAV {
     public MavenVersion version() {
         return this.version;
     }
+
+    @Override
+    public String toString() {
+        return this.group + ":" + this.artifact + ":" + this.version.getOriginText();
+    }
 }
