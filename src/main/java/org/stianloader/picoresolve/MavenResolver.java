@@ -155,7 +155,7 @@ public class MavenResolver {
                 out.put(elem.getTagName(), elem.getTextContent());
             }
         }
-        Element properties = XMLUtil.optElement(project, "properties");
+        Element properties = XMLUtil.optElement(project.getDocumentElement(), "properties");
         if (properties != null) {
             for (Element prop : new ChildElementIterable(properties)) {
                 out.put(prop.getTagName(), prop.getTextContent());

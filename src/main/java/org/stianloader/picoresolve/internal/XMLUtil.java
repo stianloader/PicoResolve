@@ -83,7 +83,7 @@ public class XMLUtil {
     }
 
     @Nullable
-    public static String elementText(@NotNull Node node, @NotNull String name) {
+    public static String elementText(@NotNull Element node, @NotNull String name) {
         Element e = XMLUtil.optElement(node, name);
         if (e == null) {
             return null;
@@ -101,26 +101,26 @@ public class XMLUtil {
     }
 
     @Nullable
-    public static Element optElement(@NotNull Node node, @NotNull String name) {
-        int i = 0;
+    public static Element optElement(@NotNull Element parentNode, @NotNull String name) {
+        Iterator<@NotNull Element> it = new ElementNodeListIterator(parentNode.getElementsByTagName(name));
 
-        for (NodeList list = node.getChildNodes(); i < list.getLength(); i++) {
-            if (list.item(i) instanceof Element) {
-                Element e = (Element) list.item(i);
-                if (e.getTagName().equals(name)) {
-                    return e;
-                }
+        while (it.hasNext()) {
+            Element e = it.next();
+            // getElementsByTagName is not a shallow operation. That is not requested - so we shall filter out everything that doesn't match
+            if (e.getParentNode() != parentNode) {
+                continue;
             }
+            return e;
         }
 
         return null;
     }
 
     @NotNull
-    public static Element reqElement(@NotNull Node node, @NotNull String name) {
-        Element e = XMLUtil.optElement(node, name);
+    public static Element reqElement(@NotNull Element parentNode, @NotNull String name) {
+        Element e = XMLUtil.optElement(parentNode, name);
         if (e == null) {
-            throw new NoSuchElementException("No element tagged " + name + " for node " + node.getBaseURI());
+            throw new NoSuchElementException("No element tagged " + name + " for node " + parentNode.getBaseURI());
         }
         return e;
     }
