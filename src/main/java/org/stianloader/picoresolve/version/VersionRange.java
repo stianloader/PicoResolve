@@ -121,7 +121,19 @@ public class VersionRange {
     }
 
     public boolean containsVersion(MavenVersion version) {
-        for (VersionSet set : versionSets) {
+        if (this.versionSets.isEmpty()) {
+            // Maven treats version recommendations as implicit pins.
+            // Not doing so would mean that arbitrary version strings would automatically
+            // use the newest version if it isn't defined already - which is pure nonsense.
+            for (MavenVersion recommended : this.recommendedVersions) {
+                if (recommended.compareTo(version) == 0) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        for (VersionSet set : this.versionSets) {
             if (!set.contains(version)) {
                 return false;
             }
@@ -277,25 +289,25 @@ public class VersionRange {
 
         @Override
         public String toString() {
-            return '[' + version.toString() + ']';
+            return '[' + this.version.toString() + ']';
         }
     }
 
     @Override
     public String toString() {
         StringBuilder builder = new StringBuilder();
-        for (VersionSet set : versionSets) {
+        for (VersionSet set : this.versionSets) {
             builder.append(set.toString());
             builder.append(',');
         }
-        if (recommendedVersions.isEmpty()) {
-            if (versionSets.isEmpty()) {
+        if (this.recommendedVersions.isEmpty()) {
+            if (this.versionSets.isEmpty()) {
                 return ",";
             }
             builder.setLength(builder.length() - 1);
             return builder.toString();
         }
-        for (MavenVersion recommended : recommendedVersions) {
+        for (MavenVersion recommended : this.recommendedVersions) {
             builder.append(recommended.toString());
             builder.append(',');
         }
@@ -321,6 +333,10 @@ public class VersionRange {
      * Obtains the newest ("highest") recommended version that is within the version range.
      * If there are no recommended versions or if none of these versions match the constraints set up
      * by the version range, null is returned.
+     *
+     * <p>Note: In the absence of any explicit range rules, as is the case when a {@link VersionRange}
+     * is a plain version, then the recommended version will implicitly be treated as "pins". That is,
+     * they are the only allowed versions.
      *
      * @return The highest recommended version that lies within the bounds of the version range.
      */

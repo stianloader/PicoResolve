@@ -79,12 +79,6 @@ public class VersionRangeTest {
         assertTrue(VersionRange.parse("1").containsVersion(MavenVersion.parse("1")));
         assertTrue(VersionRange.parse("1").containsVersion(MavenVersion.parse("1.0.0")));
 
-        // When being pedantic, the version '1' is only a recommendation, but not a requirement.
-        // Hence, versions '1.0.1' and '2' (hell, even any other version) are
-        // included in the range by default.
-        assertTrue(VersionRange.parse("1").containsVersion(MavenVersion.parse("1.0.1")));
-        assertTrue(VersionRange.parse("1").containsVersion(MavenVersion.parse("2")));
-
         assertEquals(0, Objects.requireNonNull(VersionRange.parse("1").getRecommended()).compareTo(MavenVersion.parse("1.0")));
         assertNotEquals(0, Objects.requireNonNull(VersionRange.parse("1").getRecommended()).compareTo(MavenVersion.parse("1.0.1")));
 
@@ -92,5 +86,10 @@ public class VersionRangeTest {
         assertTrue(VersionRange.parse("[1]").containsVersion(MavenVersion.parse("1.0.0")));
         assertFalse(VersionRange.parse("[1]").containsVersion(MavenVersion.parse("1.0.1")));
         assertFalse(VersionRange.parse("[1]").containsVersion(MavenVersion.parse("2")));
+    }
+
+    @Test
+    public void testImplicitPinVersionRange() {
+        assertFalse(VersionRange.parse("1").containsVersion(MavenVersion.parse("1.1")));
     }
 }
