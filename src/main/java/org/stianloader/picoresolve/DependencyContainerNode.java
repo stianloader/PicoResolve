@@ -26,8 +26,7 @@ class DependencyContainerNode {
         this.gav = gav;
     }
 
-    class SubdependencyNode {
-
+    static class SubdependencyNode {
         @NotNull
         final String group;
         @NotNull
@@ -80,14 +79,10 @@ class DependencyContainerNode {
         }
     }
 
-    void createDependency(@NotNull String group, @NotNull String artifactId, @Nullable String classifier, @Nullable String type, @NotNull VersionRange version, @NotNull Scope scope, @Nullable ExclusionContainer<Exclusion> exclusions) {
-        if (type == null) {
-            type = "jar";
-        }
-
+    void createDependency(@NotNull String group, @NotNull String artifactId, @Nullable String classifier, @NotNull String type, @NotNull VersionRange version, @NotNull Scope scope, @Nullable ExclusionContainer<Exclusion> exclusions) {
         SubdependencyNode dep = this.selectDependency(group, artifactId, classifier, type);
         if (dep != null) {
-            throw new IllegalStateException("Dependency already exists");
+            throw new IllegalStateException("Dependency already exists: " + group + ":" + artifactId + ":" + version + ":" + classifier + ":" + type);
         }
         dep = new SubdependencyNode(group, artifactId, classifier, type, version, scope, exclusions);
         this.dependencies.add(dep);

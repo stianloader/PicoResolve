@@ -439,6 +439,20 @@ public class MavenResolver {
                 throw new IllegalStateException("Fatal failure while assembling dependency " + group + ":" + artifactId + ":" + classifier + ":" + type + " as defined by " + poms.get(0).getKey() + ". This likely hints at either an impoper POM or incorrect dependency management parsing by the resolver.");
             }
 
+            if (type == null) {
+                type = "jar";
+            }
+
+            if (container.selectDependency(group, artifactId, classifier, type) != null) {
+                // Yes, for some god awful reason you can define a dependency twice - that being said maven
+                // will report a warning if you do so, so we shall do it too.
+                // That being said, I have not tested whether the dependency is plainly discarded
+                // or whether more intricate logic happens (i.e. merging blocks such as exclusions, optional or scope).
+                // TODO Use a logging framework of some sense
+                System.err.println("POM of project " + container.gav.toString() + " defines duplicate dependency for " + group + ":" + artifactId + ":" + version + ":" + classifier + ":" + type + ". It is highly recommended to fix these problems because they threaten the stability of the resolver output. Future versions of Maven may no longer support these configurations.");
+                continue;
+            }
+
             container.createDependency(group, artifactId, classifier, type, VersionRange.parse(version), Scope.fromString(scope), exclusions);
         }
         return container;
