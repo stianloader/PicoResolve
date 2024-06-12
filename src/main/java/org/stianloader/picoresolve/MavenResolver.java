@@ -38,6 +38,7 @@ import org.stianloader.picoresolve.internal.XMLUtil;
 import org.stianloader.picoresolve.internal.XMLUtil.ChildElementIterable;
 import org.stianloader.picoresolve.internal.meta.VersionCatalogue;
 import org.stianloader.picoresolve.internal.meta.VersionCatalogue.SnapshotVersion;
+import org.stianloader.picoresolve.logging.LoggingAdapter;
 import org.stianloader.picoresolve.repo.MavenLocalRepositoryNegotiator;
 import org.stianloader.picoresolve.repo.MavenRepository;
 import org.stianloader.picoresolve.repo.RepositoryAttachedValue;
@@ -54,6 +55,9 @@ public class MavenResolver {
     // TODO cache poms
     private final RepositoryNegotiatior negotiator;
     private final ConcurrentMap<GAV, DependencyContainerNode> depdenencyCache = new ConcurrentHashMap<>();
+
+    @NotNull
+    private LoggingAdapter logger = LoggingAdapter.getDefaultLogger();
 
     /**
      * Whether to pretend that dependencies with the "test" scope did not exist. This may significantly improve lookup speeds,
@@ -448,8 +452,7 @@ public class MavenResolver {
                 // will report a warning if you do so, so we shall do it too.
                 // That being said, I have not tested whether the dependency is plainly discarded
                 // or whether more intricate logic happens (i.e. merging blocks such as exclusions, optional or scope).
-                // TODO Use a logging framework of some sense
-                System.err.println("POM of project " + container.gav.toString() + " defines duplicate dependency for " + group + ":" + artifactId + ":" + version + ":" + classifier + ":" + type + ". It is highly recommended to fix these problems because they threaten the stability of the resolver output. Future versions of Maven may no longer support these configurations.");
+                this.logger.warn(MavenResolver.class, "POM of project {} defines duplicate dependency for {}:{}:{}:{}:{}. It is highly recommended to fix these problems because they threaten the stability of the resolver output. Future versions of Maven may no longer support these configurations.", container.gav, group, artifactId, version, classifier, type);
                 continue;
             }
 
@@ -661,5 +664,9 @@ public class MavenResolver {
             parsed.add(new Exclusion(group, artifact));
         }
         return new ExclusionContainer<>(ExclusionMode.ANY, parsed, false);
+    }
+
+    public void setLogger(@NotNull LoggingAdapter logger) {
+        this.logger = Objects.requireNonNull(logger, "logger may not be null.");
     }
 }
