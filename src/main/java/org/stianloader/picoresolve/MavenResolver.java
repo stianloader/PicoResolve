@@ -302,8 +302,11 @@ public class MavenResolver {
         for (Map.Entry<VersionlessDependency, ChildResolutionContext> entry : resolveChildren.entrySet()) {
             VersionlessDependency coordinates = entry.getKey();
             ChildResolutionContext resolveContext = entry.getValue();
-            futures.add(this.getVersions(coordinates.group(), coordinates.artifact(), executor).thenCompose((catalogue)-> {
-
+            futures.add(this.getVersions(coordinates.group(), coordinates.artifact(), executor).exceptionally((ex) -> {
+                this.logger.debug(MavenResolver.class, "Failed to obtain versions for artifact '{}:{}'", coordinates.group(), coordinates.artifact(), ex);
+                this.logger.warn(MavenResolver.class, "Unable to obtain the versions available for artifact '{}:{}'. It is likely that the relevant maven-metadata.xml file is missing. This may hamper resolution stability (especially when version ranges are being used) as the available versions will be guessed instead. See debug log output for the full relevant stacktrace.", coordinates.group(), coordinates.artifact());
+                return VersionCatalogue.synthesize(resolveContext.range.getRecommendedVersions());
+            }).thenCompose((catalogue)-> {
                 MavenVersion selected;
                 try {
                     selected = catalogue.selectVersion(resolveContext.range);

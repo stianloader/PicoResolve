@@ -163,6 +163,13 @@ public class VersionCatalogue {
         return merged;
     }
 
+    @NotNull
+    public static VersionCatalogue synthesize(List<@NotNull MavenVersion> guessedVersions) {
+        VersionCatalogue catalogue = new VersionCatalogue();
+        catalogue.releaseVersions.addAll(guessedVersions);
+        return catalogue;
+    }
+
     public String fallbackSnapshotVersion;
     public String lastUpdated;
     public int lastUpdateDay;
