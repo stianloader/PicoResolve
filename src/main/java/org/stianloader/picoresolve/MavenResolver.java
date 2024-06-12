@@ -129,7 +129,9 @@ public class MavenResolver {
         if (replacement == null) {
             return MavenResolver.applyPlaceholders(string, indexEnd, placeholders);
         }
-        return string.substring(0, indexStart) + replacement + string.substring(indexEnd + 1);
+
+        string = string.substring(0, indexStart) + replacement + string.substring(indexEnd + 1);
+        return MavenResolver.applyPlaceholders(string, indexStart, placeholders);
     }
 
     @Nullable
