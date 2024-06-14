@@ -149,7 +149,7 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-javadoc-plugin</artifactId>
-                <version>3.6.3</version>
+                <version>3.7.0</version>
                 <executions>
                     <execution>
                         <id>attach-javadocs</id>
@@ -161,6 +161,14 @@
                 <configuration>
                     <!-- Necessary due to our multi-release jar setup; I'm not entirely sure why this fixes our issues though. But it does, so I won't complain -->
                     <sourcepath>${project.build.sourceDirectory}</sourcepath>
+                    <!-- "Custom" javadoc tags (defined by https://openjdk.org/jeps/8068562 although draft, the JDK does use it still) -->
+                    <tags>
+                        <tag>
+                            <name>implNote</name>
+                            <placement>a</placement>
+                            <head>Implementation Note:</head>
+                        </tag>
+                    </tags>
                 </configuration>
             </plugin>
             <!-- https://mvnrepository.com/artifact/org.apache.maven.plugins/maven-gpg-plugin -->

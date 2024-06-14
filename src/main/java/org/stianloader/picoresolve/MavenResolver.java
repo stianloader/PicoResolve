@@ -307,10 +307,8 @@ public class MavenResolver {
                 this.logger.warn(MavenResolver.class, "Unable to obtain the versions available for artifact '{}:{}'. It is likely that the relevant maven-metadata.xml file is missing. This may hamper resolution stability (especially when version ranges are being used) as the available versions will be guessed instead. See debug log output for the full relevant stacktrace.", coordinates.group(), coordinates.artifact());
                 return VersionCatalogue.synthesize(resolveContext.range.getRecommendedVersions());
             }).thenCompose((catalogue)-> {
-                MavenVersion selected;
-                try {
-                    selected = catalogue.selectVersion(resolveContext.range);
-                } catch (RuntimeException e) {
+                MavenVersion selected = resolveContext.range.selectFrom(catalogue.releaseVersions, catalogue.releaseVersion);
+                if (selected == null) {
                     throw new IllegalStateException("Unable to resolve a sensical version for range " + resolveContext.range + " for coordinates " + coordinates);
                 }
                 GAV gav = new GAV(coordinates.group(), coordinates.artifact(), selected);
@@ -608,7 +606,10 @@ public class MavenResolver {
 
     public CompletableFuture<Map.Entry<@NotNull GAV, RepositoryAttachedValue<Path>>> download(@NotNull String group, @NotNull String artifact, @NotNull VersionRange versionRange, @Nullable String classifier, @NotNull String extension, @NotNull Executor executor) {
         return this.getVersions(group, artifact, executor).thenCompose((catalogue)-> {
-            MavenVersion selected = catalogue.selectVersion(versionRange);
+            MavenVersion selected = versionRange.selectFrom(catalogue.releaseVersions, catalogue.releaseVersion);
+            if (selected == null) {
+                throw new IllegalStateException("Unable to resolve a sensical version for range " + versionRange + " for coordinates " + group + ":" + artifact + ":?:" + classifier + ":" + extension);
+            }
             GAV gav = new GAV(group, artifact, selected);
             return this.download(gav, classifier, extension, executor).thenApply((rav) -> {
                 return new AbstractMap.SimpleImmutableEntry<>(gav, rav);

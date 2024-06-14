@@ -11,18 +11,20 @@ import javax.xml.XMLConstants;
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.parsers.ParserConfigurationException;
 
+import org.jetbrains.annotations.ApiStatus.Internal;
 import org.jetbrains.annotations.NotNull;
 import org.stianloader.picoresolve.internal.ConfusedResolverException;
 import org.stianloader.picoresolve.internal.XMLUtil;
 import org.stianloader.picoresolve.internal.XMLUtil.ChildElementIterable;
 import org.stianloader.picoresolve.version.MavenVersion;
-import org.stianloader.picoresolve.version.VersionRange;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.xml.sax.SAXException;
 
+@Internal
 public class VersionCatalogue {
 
+    @Internal
     public static class SnapshotVersion {
         private final String classifier;
         private final String extension;
@@ -308,34 +310,5 @@ public class VersionCatalogue {
                 }
             }
         }
-    }
-
-    @NotNull
-    public MavenVersion selectVersion(@NotNull VersionRange range) {
-        List<@NotNull MavenVersion> recommended = new ArrayList<>(range.getRecommendedVersions());
-        recommended.sort((v1, v2) -> v2.compareTo(v1));
-        for (MavenVersion version : recommended) {
-            if (this.releaseVersions.contains(version)) {
-                return version;
-            }
-        }
-
-        MavenVersion newestRelease = null;
-        for (MavenVersion v : this.releaseVersions) {
-            if (range.containsVersion(v) && (newestRelease == null || v.isNewerThan(newestRelease))) {
-                newestRelease = v;
-            }
-        }
-
-        if (newestRelease != null) {
-            return newestRelease;
-        }
-
-        MavenVersion v = range.getRecommended();
-        if (v == null) {
-            // This seemingly strange fallback mainly exists in cases where maven-metadata files are not present or incomplete
-            throw new IllegalStateException("No recommended version is defined in version range and no release version matches the constraints of the version range.");
-        }
-        return v;
     }
 }
