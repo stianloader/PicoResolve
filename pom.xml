@@ -88,7 +88,7 @@
                     <archive>
                         <index>true</index>
                         <manifestEntries>
-                            <Multi-Release>false</Multi-Release>
+                            <Multi-Release>true</Multi-Release>
                             <Built-By>${env.USERNAME}</Built-By>
                         </manifestEntries>
                         <addMavenDescriptor>true</addMavenDescriptor>
