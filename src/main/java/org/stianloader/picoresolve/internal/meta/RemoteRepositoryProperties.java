@@ -31,14 +31,14 @@ public class RemoteRepositoryProperties {
 
     public RemoteRepositoryProperties() {
         this(Arrays.asList("#NOTE: This is a Maven Resolver internal implementation file, its format can be changed without prior notice.",
-                "#NOTE: This file was written by de.geolykt:picoresolve, a nonstandard resolver implementation!",
+                "#NOTE: This file was written by picoresolve, a nonstandard resolver implementation!",
                 "#" + new Date().toString()));
     }
 
     public void setSourceRepository(String file, String remote) {
         String n = file + '>';
-        lines.removeIf(s -> s.startsWith(n));
-        lines.add(n + remote + '=');
+        this.lines.removeIf(s -> s.startsWith(n));
+        this.lines.add(n + remote + '=');
     }
 
     public Optional<String> getSourceRepository(String file) {

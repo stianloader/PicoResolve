@@ -34,11 +34,11 @@ public class LastUpdatedFile {
     }
 
     public boolean hasErrored(String repoURL) {
-        return errors.containsKey(repoURL);
+        return this.errors.containsKey(repoURL);
     }
 
     public Long getLastFetchTime(String repoURL) {
-        return lastFetch.get(repoURL);
+        return this.lastFetch.get(repoURL);
     }
 
     public static LastUpdatedFile tryParse(@NotNull Path src) {
@@ -76,16 +76,16 @@ public class LastUpdatedFile {
 
     public void write(@NotNull Path out) {
         Properties props = new Properties();
-        errors.forEach((key, val) -> {
+        this.errors.forEach((key, val) -> {
             props.put(key + ".error", val);
         });
-        lastFetch.forEach((key, val) -> {
+        this.lastFetch.forEach((key, val) -> {
             props.put(key + ".lastUpdated", val.toString());
         });
-        nonsensePairs.forEach(props::put);
+        this.nonsensePairs.forEach(props::put);
         try (OutputStream os = Files.newOutputStream(out)) {
             props.store(os, "NOTE: This is a Maven Resolver internal implementation file, its format can be changed without prior notice.\n"
-                    + "NOTE: This file was written by de.geolykt:picoresolve, a nonstandard resolver implementation!");
+                    + "NOTE: This file was written by picoresolve, a nonstandard resolver implementation!");
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
