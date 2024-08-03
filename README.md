@@ -1,13 +1,3 @@
-> [!IMPORTANT]  
-> PicoResolve is open source, but not open contribution. Contributions have to
-> be denied for the time being as this project was created for my high school
-> exams (more specifically as the "Besondere Lernleistung" of my "Abitur").
->
-> You are still free to report bugs through the usual channels though
-> (including github issues)!
->
-> I expect to lift the embargo on contributions by August 2024
-
 # PicoResolve
 
 A truly small, fast and asynchronous reimplementation of the maven artifact
