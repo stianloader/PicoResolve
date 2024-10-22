@@ -28,7 +28,7 @@ public class MavenVersion implements Comparable<MavenVersion> {
 
     @NotNull
     public static MavenVersion parse(@NotNull String string) {
-        List<String> tokens = purgeTokens(splitTokens(string));
+        List<String> tokens = MavenVersion.purgeTokens(MavenVersion.splitTokens(string));
         if (tokens.isEmpty()) {
             return new MavenVersion(string, Arrays.asList());
         }
@@ -72,16 +72,26 @@ public class MavenVersion implements Comparable<MavenVersion> {
         // "This process is repeated at each remaining hyphen from end to start."
 
         boolean trimMode = true;
+        boolean trimFromEnd = true;
+
         for (int i = tokens.size() - 1; i >= 0; i--) {
             String token = tokens.get(i);
-            if (trimMode && (token.equals("0") || token.equals("final") || token.equals("ga") || token.equals(".") || token.equals("-"))) {
+            if (trimMode && (token.equals("0") || token.equals("final") || token.equals("ga") || token.equals(".") || (trimFromEnd && token.equals("-")))) {
                 tokens.remove(i);
-            } else {
+            } else if (!token.equals("-")) {
                 trimMode = false;
             }
             if (token.equals("-")) {
+                if (trimMode && !trimFromEnd) {
+                    tokens.add(i + 1, "0");
+                }
                 trimMode = true;
+                trimFromEnd = false;
             }
+        }
+
+        if (trimMode && !trimFromEnd) {
+            tokens.add(0, "0");
         }
 
         return tokens;

@@ -53,7 +53,7 @@ public class MavenVersionTest {
         assertTrue(isNewer("1.0-sp", "1.0-ga"));
         assertTrue(isNewer("1.0-sp.1", "1.0-ga.1"));
         assertFalse(isNewer("1-sp-1", "1-ga-1"));
-        assertFalse(isNewer("1-1", "1-ga-1"));
+        assertTrue(isNewer("1-1", "1-ga-1"));
 
         assertFalse(isNewer("1-a1", "1-alpha-1"));
         assertFalse(isNewer("1-alpha-1", "1-a1"));
@@ -139,5 +139,14 @@ public class MavenVersionTest {
         // Eclipse stuff
         assertTrue(isNewer("3.3.0-I20070605-0010", "3.3.0"));
         assertFalse(isNewer("3.3.0", "3.3.0-I20070605-0010"));
+    }
+
+    @Test
+    public void testRoguePrefix() {
+        MavenVersion.parse("0-0-1");
+        MavenVersion.parse(".1");
+        MavenVersion.parse("0.foo");
+        MavenVersion.parse("0-foo");
+        assertTrue(isNewer("0.1-max-version", "0-min-version"));
     }
 }
