@@ -2,6 +2,7 @@ module org.stianloader.picoresolve {
     requires transitive java.xml;
     requires transitive static org.jetbrains.annotations;
     requires static org.slf4j;
+    requires java.logging;
 
     exports org.stianloader.picoresolve;
     exports org.stianloader.picoresolve.exclusion;
