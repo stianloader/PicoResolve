@@ -17,10 +17,12 @@ import org.stianloader.picoresolve.internal.JavaInterop;
  */
 public class MavenVersion implements Comparable<MavenVersion> {
 
+    @NotNull
     private final List<MavenVersionPart> parts;
+    @NotNull
     private final String origin;
 
-    private MavenVersion(String origin, List<MavenVersionPart> parts) {
+    private MavenVersion(@NotNull String origin, @NotNull List<MavenVersionPart> parts) {
         this.parts = Collections.unmodifiableList(new ArrayList<>(parts));
         this.origin = origin;
     }
@@ -207,7 +209,7 @@ public class MavenVersion implements Comparable<MavenVersion> {
         return builder.toString();
     }
 
-    public boolean isNewerThan(MavenVersion older) {
+    public boolean isNewerThan(@NotNull MavenVersion older) {
         return this.compareTo(older) > 0;
     }
 
@@ -237,7 +239,8 @@ public class MavenVersion implements Comparable<MavenVersion> {
         return false;
     }
 
+    @NotNull
     public String getOriginText() {
-        return origin;
+        return this.origin;
     }
 }
