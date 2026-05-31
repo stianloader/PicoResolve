@@ -35,12 +35,14 @@ public abstract class LoggingAdapter {
 
     static {
         LoggingAdapter instance;
+
         try {
             Class.forName("org.slf4j.LoggerFactory");
             instance = new SLF4JLogAdapter();
         } catch (ClassNotFoundException | NoClassDefFoundError expected) {
             instance = new JULLogAdapter();
         }
+
         currentInstance = instance;
     }
 

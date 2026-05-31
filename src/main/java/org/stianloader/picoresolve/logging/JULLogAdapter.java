@@ -13,11 +13,14 @@ class JULLogAdapter extends LoggingAdapter {
     @Contract(pure = false, mutates = "param1", value = "!null, _, _ -> param1")
     private static String createMessage(String message, Object... args) {
         StringBuilder builder = new StringBuilder();
+
         for (int i = 0; i < args.length; i++) {
             int replaceHead = message.indexOf("{}");
+
             if (replaceHead == -1) {
                 builder.append(message);
                 message = "";
+
                 if (i == (args.length - 1) && args[i] instanceof Throwable) {
                     builder.append('\n');
                     StringWriter sw = new StringWriter();

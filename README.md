@@ -23,13 +23,13 @@ This project has following core ideas:
  developer's side.
 - The compiled jar may not be larger than 150 KB.
 - The resolver does not depend on any 3rd party libraries at runtime (SLF4J
- may be an optional dependency in the future and jetbrains-annoations is a
- compile-time dependency)
+ is an optional dependency and jetbrains-annoations is a
+ compile-time only dependency)
 
 While readability is welcome whenever applicable, it was evaluated that
 the needed multi-thread capabilities severely hamper the readability of the
-application. However as in practice readability is (sadly) much less
-important as fast resolution, the unfortunate compromise was done at the
+application. Due to the fact that in practice readability is (sadly) much less
+important compared to fast resolution, this unfortunate compromise was done at the
 design stage.
 
 As most files the resolver downloads are relatively tiny yet numerous,
@@ -57,21 +57,21 @@ To compile, simply use `mvn install`.
 
 **Note: At this moment in time, picoresolve is only available on https://stianloader.org/maven/**
 
-PicoResolve is available as "org.stianloader:picoresolve:1.0.0-a20240601". As such you can
+PicoResolve is available as "org.stianloader:picoresolve:1.1.0-a20260531". As such you can
 add PicoResolve to your project the following ways:
 
 ```xml
 <dependency>
   <groupId>org.stianloader</groupId>
   <artifactId>picoresolve</artifactId>
-  <version>1.0.0-a20240601</version>
+  <version>1.1.0-a20260531</version>
 </dependency>
 ```
 
 Under maven
 
 ```groovy
-implementation("org.stianloader:picoresolve:1.0.0-a20240601")
+implementation("org.stianloader:picoresolve:1.1.0-a20260531")
 ```
 
 Under groovy gradle
@@ -122,6 +122,32 @@ Picoresolve makes no serious attempt at optimizing the exclusion containers, so
 for very very large trees this may be a potential architectural issue. However
 it is estimated that the dependency trees would need to be so large that the
 chance of there being other issues is significantly higher.
+
+## Version selection
+
+The version selection process is started whenever a GAVCE file needs to be resolved.
+Where as the version component of the GAVCE notation must be a single version.
+However, the resolver's API for downloading files makes use of `VersionRanges` for
+the version, which means that the `VersionRange` objects must be coerced down to
+a `MavenVersion` instance. This process is known as version selection.
+
+The first part of the version selection process involves the process of determining
+all available versions of an artifact. This is done by reading the A-level metadata
+of an artifact (i.e. `{repository-root}/{group}/{artifact}/maven-metadata.xml`)
+which is then converted into a `VersionCatalogue` object.
+
+Finally, the version selection process is finalized by calling `VersionRange#selectFrom`
+using the versions provided by the `VersionCatalogue` and the `DECLARATION_ORDER`
+version selection perference.
+
+When resolving dependency layers, the version selection process is amended by the
+following:
+ - The used `VersionRange` instance is the intersection of the requested version of
+ all incoming edges
+ - The declaration order of edges are relevant: Versions that are defined first are
+ preferred over those defined later on. This property is inherited for transitive
+ dependencies across layers. However, the rule of child layers not being able
+ to influence parent layers remains unbroken by this.
 
 ## Exclusions
 

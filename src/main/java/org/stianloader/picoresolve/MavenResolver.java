@@ -9,6 +9,7 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.ListIterator;
 import java.util.Locale;
@@ -45,6 +46,7 @@ import org.stianloader.picoresolve.repo.RepositoryAttachedValue;
 import org.stianloader.picoresolve.repo.RepositoryNegotiatior;
 import org.stianloader.picoresolve.version.MavenVersion;
 import org.stianloader.picoresolve.version.VersionRange;
+import org.stianloader.picoresolve.version.VersionSelectionPreference;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 
@@ -161,7 +163,9 @@ public class MavenResolver {
                 out.put(elem.getTagName(), elem.getTextContent());
             }
         }
+
         Element properties = XMLUtil.optElement(project.getDocumentElement(), "properties");
+
         if (properties != null) {
             for (Element prop : new ChildElementIterable(properties)) {
                 out.put(prop.getTagName(), prop.getTextContent());
@@ -256,7 +260,8 @@ public class MavenResolver {
         if (layer.getChild() != null) {
             throw new IllegalStateException("Child layer already resolved");
         }
-        class ChildResolutionContext {
+
+        final class ChildResolutionContext {
             @NotNull
             VersionRange range = VersionRange.FREE_RANGE;
             Scope scope;
@@ -265,10 +270,13 @@ public class MavenResolver {
             @NotNull
             final ExclusionContainer<ExclusionContainer<?>> effectiveExclusions = new ExclusionContainer<>(ExclusionMode.ALL);
         }
-        Map<VersionlessDependency, ChildResolutionContext> resolveChildren = new HashMap<>();
+
+        Map<VersionlessDependency, ChildResolutionContext> resolveChildren = new LinkedHashMap<>();
+
         for (DependencyLayerElement element : layer.elements) {
             for (DependencyEdge edge : element.outgoingEdges) {
                 VersionlessDependency dep = new VersionlessDependency(edge.group, edge.artifact, edge.classifier, edge.type);
+
                 if (resolveCache.containsKey(dep)) {
                     // Given that the artifact this edge is pointing to has already been resolved in a previous (parent) layer,
                     // we can resolve this edge now and exclude it from the version negotiation and child resolution process.
@@ -278,12 +286,16 @@ public class MavenResolver {
                     }
                     continue;
                 }
+
                 ChildResolutionContext ctx = resolveChildren.get(dep);
+
                 if (ctx == null) {
                     ctx = new ChildResolutionContext();
                     resolveChildren.put(dep, ctx);
                 }
+
                 ctx.range = ctx.range.intersect(edge.requestedVersion);
+
                 if (ctx.scope == null) {
                     ctx.scope = edge.scope;
                 } else if (edge.scope == Scope.COMPILE) {
@@ -293,31 +305,39 @@ public class MavenResolver {
                 } else if (edge.scope == Scope.PROVIDED && ctx.scope == Scope.RUNTIME) {
                     ctx.scope = Scope.PROVIDED;
                 }
+
                 ctx.effectiveExclusions.addChild(new ExclusionContainer<>(ExclusionMode.ANY, Arrays.asList(element.parentExclusions, edge.edgeExclusion), false));
                 ctx.declaringEdges.add(edge);
             }
         }
 
         List<CompletableFuture<DependencyLayerElement>> futures = new ArrayList<>();
+
         for (Map.Entry<VersionlessDependency, ChildResolutionContext> entry : resolveChildren.entrySet()) {
             VersionlessDependency coordinates = entry.getKey();
             ChildResolutionContext resolveContext = entry.getValue();
+
             futures.add(this.getVersions(coordinates.group(), coordinates.artifact(), executor).exceptionally((ex) -> {
                 this.logger.debug(MavenResolver.class, "Failed to obtain versions for artifact '{}:{}'", coordinates.group(), coordinates.artifact(), ex);
                 this.logger.warn(MavenResolver.class, "Unable to obtain the versions available for artifact '{}:{}'. It is likely that the relevant maven-metadata.xml file is missing. This may hamper resolution stability (especially when version ranges are being used) as the available versions will be guessed instead. See debug log output for the full relevant stacktrace.", coordinates.group(), coordinates.artifact());
                 return VersionCatalogue.synthesize(resolveContext.range.getRecommendedVersions());
             }).thenCompose((catalogue)-> {
-                MavenVersion selected = resolveContext.range.selectFrom(catalogue.releaseVersions, catalogue.releaseVersion);
+                MavenVersion selected = resolveContext.range.selectFrom(catalogue.releaseVersions, catalogue.releaseVersion, VersionSelectionPreference.DECLARATION_ORDER);
+
                 if (selected == null) {
                     throw new IllegalStateException("Unable to resolve a sensical version for range " + resolveContext.range + " for coordinates " + coordinates);
                 }
+
                 GAV gav = new GAV(coordinates.group(), coordinates.artifact(), selected);
+
                 return this.getNode(gav, coordinates.classifier(), coordinates.getType("jar"), executor);
             }).thenApply((node) -> {
                 DependencyLayerElement element = node.toLayerElement(coordinates.classifier(), coordinates.type(), resolveContext.effectiveExclusions);
+
                 for (DependencyEdge edge : resolveContext.declaringEdges) {
                     edge.resolve(element);
                 }
+
                 return element;
             }));
         }
@@ -327,6 +347,7 @@ public class MavenResolver {
         }
 
         StronglyMultiCompletableFuture<DependencyLayerElement> combinedFuture = new StronglyMultiCompletableFuture<>(futures);
+
         return combinedFuture.thenApply((elements) -> {
             combinedFuture.throwExceptionIfCompletedUncleanly();
             return new DependencyLayer(layer, Collections.unmodifiableList(elements));
@@ -348,11 +369,13 @@ public class MavenResolver {
 
     public CompletableFuture<Void> resolveAllChildren(@NotNull DependencyLayer current, @NotNull Executor executor) {
         Map<VersionlessDependency, DependencyLayerElement> resolveCache = new HashMap<>();
+
         for (DependencyLayer layer = current; layer != null; layer = layer.parent) {
             for (DependencyLayerElement element : layer.elements) {
                 resolveCache.put(new VersionlessDependency(element.gav.group(), element.gav.artifact(), element.classifier, element.type), element);
             }
         }
+
         return this.resolveAllChildren0(current, executor, resolveCache);
     }
 
@@ -606,11 +629,14 @@ public class MavenResolver {
 
     public CompletableFuture<Map.Entry<@NotNull GAV, RepositoryAttachedValue<Path>>> download(@NotNull String group, @NotNull String artifact, @NotNull VersionRange versionRange, @Nullable String classifier, @NotNull String extension, @NotNull Executor executor) {
         return this.getVersions(group, artifact, executor).thenCompose((catalogue)-> {
-            MavenVersion selected = versionRange.selectFrom(catalogue.releaseVersions, catalogue.releaseVersion);
+            MavenVersion selected = versionRange.selectFrom(catalogue.releaseVersions, catalogue.releaseVersion, VersionSelectionPreference.DECLARATION_ORDER);
+
             if (selected == null) {
                 throw new IllegalStateException("Unable to resolve a sensical version for range " + versionRange + " for coordinates " + group + ":" + artifact + ":?:" + classifier + ":" + extension);
             }
+
             GAV gav = new GAV(group, artifact, selected);
+
             return this.download(gav, classifier, extension, executor).thenApply((rav) -> {
                 return new AbstractMap.SimpleImmutableEntry<>(gav, rav);
             });

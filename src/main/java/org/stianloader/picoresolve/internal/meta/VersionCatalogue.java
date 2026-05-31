@@ -257,11 +257,12 @@ public class VersionCatalogue {
         // cached version catalogues and the snapshotVersions element is not stored in them.
         // We can however restore the minimum data needed to proceed via the "snapshot" element, while this may
         // introduce additional operational risks the idea behind this workaround is that whatever introduces
-        // this anomaly has nothing else to work with, so our resolve shouldn't need the extra information either.
+        // this anomaly has nothing else to work with, so our resolver shouldn't need the extra information either.
 
         // Of course we could just invalidate the cache and request the file again, but this would introduce
         // further latency as well as complexity in the library (as this error state would most likely need to be handled
         // by the caller, as the needed repository references are unavailable within this constructor).
+
         Element snapshots = XMLUtil.optElement(versioning, "snapshot");
         Element versionElement = XMLUtil.optElement(metadata, "version");
 
@@ -275,12 +276,13 @@ public class VersionCatalogue {
             Element timestamp = XMLUtil.optElement(snapshots, "timestamp");
             Element buildNr = XMLUtil.optElement(snapshots, "buildNumber");
             Element localCopy = XMLUtil.optElement(snapshots, "localCopy");
+
             if ((timestamp == null || buildNr == null) && localCopy == null) {
                 throw new ConfusedResolverException("Too little data remaining to be able to build up a fallback snapshot version: " + metadata.toString());
-            }
-            if (localCopy != null) {
+            } else if (localCopy != null) {
                 this.localCopy = "true".equalsIgnoreCase(localCopy.getTextContent());
             }
+
             if (timestamp != null && buildNr != null) {
                 int index = versionElement.getTextContent().toLowerCase().lastIndexOf("-snapshot");
                 if (index == -1) {

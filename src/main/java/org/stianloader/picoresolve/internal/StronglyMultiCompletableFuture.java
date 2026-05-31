@@ -7,6 +7,8 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import org.jetbrains.annotations.Contract;
+import org.jetbrains.annotations.NotNull;
 import org.stianloader.picoresolve.internal.MultiCompletableFuture.MultiCompletionException;
 
 /**
@@ -15,7 +17,7 @@ import org.stianloader.picoresolve.internal.MultiCompletableFuture.MultiCompleti
  * other futures complete exceptionally, otherwise it will complete normally once the last
  * future completes normally.
  */
-public class StronglyMultiCompletableFuture<T> extends CompletableFuture<List<T>> {
+public class StronglyMultiCompletableFuture<T> extends CompletableFuture<@NotNull List<T>> {
 
     private final CompletableFuture<T>[] sources;
     private final T[] results;
@@ -33,6 +35,7 @@ public class StronglyMultiCompletableFuture<T> extends CompletableFuture<List<T>
         this.sources = sources;
         this.exceptions = new Throwable[this.sources.length];
         this.results = (T[]) new Object[this.sources.length];
+
         for (int i = 0; i < sources.length; i++) {
             CompletableFuture<T> future = sources[i];
             final int futureIndex = i;
@@ -42,6 +45,7 @@ public class StronglyMultiCompletableFuture<T> extends CompletableFuture<List<T>
                 return null;
             });
         }
+
         if (sources.length == 0) {
             this.complete(new ArrayList<>());
         }
@@ -53,14 +57,18 @@ public class StronglyMultiCompletableFuture<T> extends CompletableFuture<List<T>
             if (this.exceptions[i] != null || this.results[i] != null) {
                 return;
             }
+
             this.results[i] = result;
+
             if (this.completions.incrementAndGet() == this.results.length && !this.isDone()) {
                 List<T> results = new ArrayList<>();
+
                 for (T t : this.results) {
                     if (t != null) {
                         results.add(t);
                     }
                 }
+
                 this.complete(results);
             }
         }
@@ -68,36 +76,46 @@ public class StronglyMultiCompletableFuture<T> extends CompletableFuture<List<T>
 
     private void sourceException(int i, Throwable exception) {
         Objects.requireNonNull(exception);
+
         synchronized (this) {
             if (this.exceptions[i] != null || this.results[i] != null) {
                 return;
             }
+
             this.exceptions[i] = exception;
+
             if (++this.exceptionally == this.exceptions.length) {
                 if (!this.isDone()) {
                     completeExceptionally(this.generateException().fillInStackTrace());
                 }
             }
+
             if (this.completions.incrementAndGet() == this.results.length && !this.isDone()) {
                 List<T> results = new ArrayList<>();
+
                 for (T t : this.results) {
                     if (t != null) {
                         results.add(t);
                     }
                 }
+
                 this.complete(results);
             }
         }
     }
 
+    @NotNull
+    @Contract(pure = true)
     protected CompletionException generateException() {
         return new MultiCompletionException(this.exceptions);
     }
 
+    @Contract(pure = true)
     public final void throwExceptionIfCompletedUncleanly() {
         if (this.exceptionally == 0) {
             return;
         }
+
         throw this.generateException();
     }
 }

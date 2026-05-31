@@ -72,6 +72,13 @@ final class VersionlessDependency {
         return Objects.hash(this.group, this.artifact, this.classifier, this.type);
     }
 
+    @Override
+    @NotNull
+    @Contract(pure = true)
+    public String toString() {
+        return "VersionlessDependency[gace=" + this.group() + ":" + this.artifact() + ":" + this.classifier() + ":" + this.type() + "]";
+    }
+
     @Nullable
     @Contract(pure = true)
     public String type() {

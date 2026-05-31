@@ -6,6 +6,9 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 
+import org.jetbrains.annotations.ApiStatus.ScheduledForRemoval;
+import org.jetbrains.annotations.ApiStatus;
+import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -14,16 +17,18 @@ public class VersionRange {
 
     // Basically an interval where the other bound is infinity.
     private static class Edge implements VersionSet {
+        @NotNull
         private final MavenVersion edgeVersion;
+        @NotNull
         private final EdgeType type;
 
-        public Edge(MavenVersion edgeVersion, EdgeType type) {
+        public Edge(@NotNull MavenVersion edgeVersion, @NotNull EdgeType type) {
             this.edgeVersion = edgeVersion;
             this.type = type;
         }
 
         @Override
-        public boolean contains(MavenVersion version) {
+        public boolean contains(@NotNull MavenVersion version) {
             if (this.type == EdgeType.UP_TO) {
                 return !version.isNewerThan(this.edgeVersion);
             } else if (this.type == EdgeType.UNDER) {
@@ -65,6 +70,7 @@ public class VersionRange {
             }
         }
     }
+
     private enum EdgeType {
         UP_TO,     // x <= 1.0 - (,1.0]
         UNDER,     // x <  1.0 - (,1.0)
@@ -74,19 +80,22 @@ public class VersionRange {
 
     private static class Interval implements VersionSet {
         // lower bound is the oldest accepted version (for a closed interval that is)
+        @NotNull
         private final MavenVersion lowerBound;
         // upper bound is the newest accepted version (for a closed interval that is)
+        @NotNull
         private final MavenVersion upperBound;
+        @NotNull
         private final IntervalType type;
 
-        public Interval(MavenVersion lowerBound, MavenVersion upperBound, IntervalType type) {
+        public Interval(@NotNull MavenVersion lowerBound, @NotNull MavenVersion upperBound, @NotNull IntervalType type) {
             this.lowerBound = lowerBound;
             this.upperBound = upperBound;
             this.type = type;
         }
 
         @Override
-        public boolean contains(MavenVersion version) {
+        public boolean contains(@NotNull MavenVersion version) {
             if (this.type == IntervalType.CLOSED) {
                 return !version.isNewerThan(this.upperBound) && !this.lowerBound.isNewerThan(version);
             } else if (this.type == IntervalType.UPPER_OPEN) {
@@ -145,7 +154,7 @@ public class VersionRange {
         }
 
         @Override
-        public boolean contains(MavenVersion version) {
+        public boolean contains(@NotNull MavenVersion version) {
             return !this.version.isNewerThan(version) && !version.isNewerThan(this.version);
         }
 
@@ -156,7 +165,7 @@ public class VersionRange {
     }
 
     private static interface VersionSet {
-        boolean contains(MavenVersion version);
+        boolean contains(@NotNull MavenVersion version);
     }
 
     /**
@@ -313,7 +322,7 @@ public class VersionRange {
         this.versionSets = Collections.unmodifiableList(new ArrayList<>(sets));
     }
 
-    public boolean containsVersion(MavenVersion version) {
+    public boolean containsVersion(@NotNull MavenVersion version) {
         if (this.versionSets.isEmpty()) {
             // Maven treats version recommendations as implicit pins.
             // Not doing so would mean that arbitrary version strings would automatically
@@ -323,6 +332,7 @@ public class VersionRange {
                     return true;
                 }
             }
+
             return false;
         }
 
@@ -331,6 +341,7 @@ public class VersionRange {
                 return false;
             }
         }
+
         return true;
     }
 
@@ -382,11 +393,90 @@ public class VersionRange {
         List<@NotNull MavenVersion> recommended = new ArrayList<>(this.recommendedVersions);
         sets.addAll(version.versionSets);
         recommended.addAll(version.recommendedVersions);
+
         return new VersionRange(sets, recommended);
     }
 
+    /**
+     * Select the {@link MavenVersion} that best applies to this {@link VersionRange}, making use of
+     * a list of all available versions (<code>knownAvailable</code>) using the provided {@link VersionSelectionPreference}.
+     *
+     * <p>However, even if no versions are known as available, the {@link VersionRange} will prefer to select from
+     * {@link #getRecommendedVersions()}.
+     *
+     * <p>For {@link VersionSelectionPreference#DECLARATION_ORDER}, the artifact declaration order is determined
+     * using the order in which {@link VersionRange} instances are intersected with each other, i.e. the
+     * order of the {@link VersionRange#intersect(VersionRange)} calls. More specifically, it is defined
+     * using the order of {@link #getRecommendedVersions()}.
+     *
+     * @param knownAvailable All known-available versions that this {@link VersionRange} can resolve to. This list is usually resolved from the A-level <code>maven-metadata.xml</code> file.
+     * @param releaseVersion The version corresponding to the RELEASE version (see {@link #RELEASE}).
+     * @param preference The method by which the selected version should be determined.
+     * @return The selected {@link MavenVersion}, or <code>null</code> if it doesn't apply.
+     * @since 1.1.0-a20260531
+     */
     @Nullable
+    @ApiStatus.AvailableSince("1.1.0-a20260531")
+    @Contract(pure = true)
+    public MavenVersion selectFrom(@Nullable Collection<@NotNull MavenVersion> knownAvailable, @Nullable MavenVersion releaseVersion, @NotNull VersionSelectionPreference preference) {
+        if (preference == VersionSelectionPreference.NEWEST_FIRST) {
+            return this.selectFromVersionOrder(knownAvailable, releaseVersion);
+        } else if (preference == VersionSelectionPreference.DECLARATION_ORDER) {
+            return this.selectFromArtifactOrder(knownAvailable, releaseVersion);
+        } else {
+            throw new IllegalArgumentException("Invalid preference: " + preference);
+        }
+    }
+
+    /**
+     * @deprecated Use {@link #selectFrom(Collection, MavenVersion, VersionSelectionPreference)} instead. This method remains for
+     * ABI compatibility and uses the outdated {@link VersionSelectionPreference#NEWEST_FIRST} selection preference.
+     *
+     * @param knownAvailable All known-available versions that this {@link VersionRange} can resolve to. This list is usually resolved from the A-level <code>maven-metadata.xml</code> file.
+     * @param releaseVersion The version corresponding to the RELEASE version (see {@link #RELEASE}).
+     * @return The selected {@link MavenVersion}, or <code>null</code> if it doesn't apply.
+     */
+    @Nullable
+    @Deprecated
+    @ScheduledForRemoval(inVersion = "2.0.0-a0")
+    @Contract(pure = true)
     public MavenVersion selectFrom(@Nullable Collection<@NotNull MavenVersion> knownAvailable, @Nullable MavenVersion releaseVersion) {
+        return this.selectFromVersionOrder(knownAvailable, releaseVersion);
+    }
+
+    @Nullable
+    @Contract(pure = true)
+    private MavenVersion selectFromArtifactOrder(@Nullable Collection<@NotNull MavenVersion> knownAvailable, @Nullable MavenVersion releaseVersion) {
+        if (this == VersionRange.RELEASE) {
+            return releaseVersion;
+        }
+
+        for (MavenVersion version : this.getRecommendedVersions()) {
+            if (this.containsVersion(version)) {
+                return version;
+            }
+        }
+
+        MavenVersion candidateVersion = null;
+
+        if (knownAvailable != null) {
+            for (MavenVersion known : knownAvailable) {
+                if ((candidateVersion == null || known.isNewerThan(candidateVersion)) && this.containsVersion(known)) {
+                    candidateVersion = known;
+                }
+            }
+
+            if (candidateVersion != null) {
+                return candidateVersion;
+            }
+        }
+
+        return null;
+    }
+
+    @Nullable
+    @Contract(pure = true)
+    private MavenVersion selectFromVersionOrder(@Nullable Collection<@NotNull MavenVersion> knownAvailable, @Nullable MavenVersion releaseVersion) {
         if (this == VersionRange.RELEASE) {
             return releaseVersion;
         }
@@ -420,10 +510,12 @@ public class VersionRange {
     @Override
     public String toString() {
         StringBuilder builder = new StringBuilder();
+
         for (VersionSet set : this.versionSets) {
             builder.append(set.toString());
             builder.append(',');
         }
+
         if (this.recommendedVersions.isEmpty()) {
             if (this.versionSets.isEmpty()) {
                 return ",";
@@ -431,11 +523,14 @@ public class VersionRange {
             builder.setLength(builder.length() - 1);
             return builder.toString();
         }
+
         for (MavenVersion recommended : this.recommendedVersions) {
             builder.append(recommended.toString());
             builder.append(',');
         }
+
         builder.setLength(builder.length() - 1);
+
         return builder.toString();
     }
 }

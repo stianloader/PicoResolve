@@ -16,6 +16,7 @@ public class MultiCompletableFuture<T> extends CompletableFuture<T> {
                 if (t == null) {
                     continue;
                 }
+
                 this.addSuppressed(t);
             }
         }
