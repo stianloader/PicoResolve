@@ -24,6 +24,7 @@ import java.util.concurrent.Executor;
 import javax.xml.XMLConstants;
 import javax.xml.parsers.DocumentBuilderFactory;
 
+import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.stianloader.picoresolve.DependencyLayer.DependencyEdge;
@@ -102,7 +103,7 @@ public class MavenResolver {
 
     public MavenResolver addRepositories(@NotNull MavenRepository @NotNull... repos) {
         for (MavenRepository mr : repos) {
-            addRepository(mr);
+            this.addRepository(mr);
         }
         return this;
     }
@@ -174,15 +175,17 @@ public class MavenResolver {
     }
 
     @NotNull
-    private CompletableFuture<Document> downloadPom(@NotNull GAV gav, @NotNull Executor executor) {
-        return download(gav, null, "pom", executor).thenApply((pathRAV) -> {
+    private CompletableFuture<@NotNull Document> downloadPom(@NotNull GAV gav, @NotNull Executor executor) {
+        return this.download(gav, null, "pom", executor).thenApply((pathRAV) -> {
             try {
                 Document xmlDoc;
+
                 {
                     DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
                     factory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
                     xmlDoc = factory.newDocumentBuilder().parse(Files.newInputStream(pathRAV.getValue()));
                 }
+
                 return xmlDoc;
             } catch (Exception e) {
                 throw new RuntimeException(e);
@@ -256,6 +259,7 @@ public class MavenResolver {
         });
     }
 
+    @NotNull
     private CompletableFuture<DependencyLayer> resolveChildLayer(@NotNull DependencyLayer layer, @NotNull Executor executor, @NotNull Map<VersionlessDependency, DependencyLayerElement> resolveCache) {
         if (layer.getChild() != null) {
             throw new IllegalStateException("Child layer already resolved");
@@ -311,7 +315,7 @@ public class MavenResolver {
             }
         }
 
-        List<CompletableFuture<DependencyLayerElement>> futures = new ArrayList<>();
+        List<CompletableFuture<@NotNull DependencyLayerElement>> futures = new ArrayList<>();
 
         for (Map.Entry<VersionlessDependency, ChildResolutionContext> entry : resolveChildren.entrySet()) {
             VersionlessDependency coordinates = entry.getKey();
@@ -346,7 +350,7 @@ public class MavenResolver {
             return CompletableFuture.completedFuture(null);
         }
 
-        StronglyMultiCompletableFuture<DependencyLayerElement> combinedFuture = new StronglyMultiCompletableFuture<>(futures);
+        StronglyMultiCompletableFuture<@NotNull DependencyLayerElement> combinedFuture = new StronglyMultiCompletableFuture<>(futures);
 
         return combinedFuture.thenApply((elements) -> {
             combinedFuture.throwExceptionIfCompletedUncleanly();
@@ -354,6 +358,7 @@ public class MavenResolver {
         });
     }
 
+    @NotNull
     private CompletableFuture<Void> resolveAllChildren0(@NotNull DependencyLayer layer, @NotNull Executor executor, @NotNull Map<VersionlessDependency, DependencyLayerElement> resolveCache) {
         return this.resolveChildLayer(layer, executor, resolveCache).thenCompose((child) -> {
             if (child == null) {
@@ -367,6 +372,34 @@ public class MavenResolver {
         });
     }
 
+    /**
+     * Resolve a given {@link DependencyLayer} and all its children recursively.
+     *
+     * <p>This can be vaguely thought of as recursively resolving the child layer of a layer,
+     * until the layer is empty.
+     *
+     * <p>This method is the mainstay of this library, and is generally always used when
+     * resolving the dependencies of an artifact or a set of artifacts. A {@link DependencyLayer}
+     * element can be created manually, which permits fine tuning. Otherwise, {@link DependencyLayer#createLayerFor(GAV, GAV...)}
+     * exists but comes to potentially premature conclusions (such as exclusions, scope, classifier, and extension
+     * of an artifact).
+     *
+     * <p>This method mutates the provided layer and attaches a child layer to it.
+     * This means that {@link DependencyLayer#getChild()} must be <code>null</code>
+     * for this method to succeed. Resolving already resolved layers will throw an exception.
+     *
+     * <p>Depending on the {@link Executor} used, this method can return early as it is not inherently blocking.
+     * As such, the completion of this method does not indicate that the resolution process has completed.
+     * To await for the resolution process to finish, {@link CompletableFuture#join()} or similar should be used.
+     * However, a blocking {@link Executor} can cause this method to behave as if it were blocking, too.
+     *
+     * @param current The {@link DependencyLayer} to resolve its child of.
+     * @param executor The {@link Executor} used to schedule potentially blocking tasks on, such as file or network I/O.
+     * @return A {@link CompletableFuture} which completes when all child layers are resolved. The future has no
+     * usable return value.
+     */
+    @Contract(pure = false, mutates = "param1", value = "null, _ -> fail; _, null -> fail; !null, !null -> new")
+    @NotNull
     public CompletableFuture<Void> resolveAllChildren(@NotNull DependencyLayer current, @NotNull Executor executor) {
         Map<VersionlessDependency, DependencyLayerElement> resolveCache = new HashMap<>();
 
@@ -379,13 +412,17 @@ public class MavenResolver {
         return this.resolveAllChildren0(current, executor, resolveCache);
     }
 
+    @Contract(pure = false, mutates = "param1", value = "null, _ -> fail; _, null -> fail; !null, !null -> new")
+    @NotNull
     public CompletableFuture<DependencyLayer> resolveChildLayer(@NotNull DependencyLayer current, @NotNull Executor executor) {
         Map<VersionlessDependency, DependencyLayerElement> resolveCache = new HashMap<>();
+
         for (DependencyLayer layer = current; layer != null; layer = layer.parent) {
             for (DependencyLayerElement element : layer.elements) {
                 resolveCache.put(new VersionlessDependency(element.gav.group(), element.gav.artifact(), element.classifier, element.type), element);
             }
         }
+
         return this.resolveChildLayer(current, executor, resolveCache);
     }
 
@@ -458,10 +495,8 @@ public class MavenResolver {
                 }
             }
 
-            if (this.ignoreTestDependencies && "test".equalsIgnoreCase(scope)) {
-                continue;
-            }
-            if (this.ignoreOptionalDependencies && "true".equalsIgnoreCase(optional)) {
+            if ((this.ignoreTestDependencies && "test".equalsIgnoreCase(scope))
+                    || (this.ignoreOptionalDependencies && "true".equalsIgnoreCase(optional))) {
                 continue;
             }
 
@@ -521,6 +556,7 @@ public class MavenResolver {
 
     private static void computePlaceholders(List<Map.Entry<@NotNull GAV, @NotNull Document>> poms, int pomIndex, Map<String, String> out) {
         GAV gav = poms.get(pomIndex).getKey();
+
         if (!poms.isEmpty()) {
             for (ListIterator<Map.Entry<@NotNull GAV, @NotNull Document>> lit = poms.listIterator(pomIndex); lit.hasNext();) { // TODO chances are we need the inverse order (we used to iterate from the back), so be aware that this may need fixing
                 Map.Entry<@NotNull GAV, @NotNull Document> entry = lit.next();

@@ -8,11 +8,8 @@ import java.io.PrintStream;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Paths;
-import java.util.ArrayList;
 import java.util.BitSet;
-import java.util.Collections;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 
@@ -23,11 +20,8 @@ import org.stianloader.picoresolve.DependencyLayer.DependencyEdge;
 import org.stianloader.picoresolve.DependencyLayer.DependencyLayerElement;
 import org.stianloader.picoresolve.GAV;
 import org.stianloader.picoresolve.MavenResolver;
-import org.stianloader.picoresolve.Scope;
-import org.stianloader.picoresolve.exclusion.ExclusionContainer;
 import org.stianloader.picoresolve.repo.URIMavenRepository;
 import org.stianloader.picoresolve.version.MavenVersion;
-import org.stianloader.picoresolve.version.VersionRange;
 
 public class DependencyTreeTest {
 
@@ -84,21 +78,11 @@ public class DependencyTreeTest {
     }
 
     @NotNull
-    private static DependencyLayer createVirtualLayerFor(GAV... dependencies) {
-        List<DependencyEdge> virtualEdges = new ArrayList<>();
-
-        for (GAV dependency : dependencies) {
-            virtualEdges.add(new DependencyEdge(dependency.group(), dependency.artifact(), null, "pom", VersionRange.parse(dependency.version().getOriginText()), Scope.COMPILE, ExclusionContainer.empty()));
-        }
-
-        GAV virtualGAV = new GAV("virtual-node", "virtual-node", MavenVersion.parse(""));
-        DependencyLayerElement virtualElement = new DependencyLayerElement(virtualGAV, null, null, ExclusionContainer.empty(), virtualEdges);
-        DependencyLayer virtualLayer = new DependencyLayer(null, Collections.singletonList(virtualElement));
-
-        return virtualLayer;
+    private static DependencyLayer createVirtualLayerFor(@NotNull GAV @NotNull... dependencies) {
+        return DependencyLayer.createLayerFor(new GAV("virtual-node", "virtual-node", MavenVersion.parse("")), dependencies);
     }
 
-    private static void printtree(PrintStream out, DependencyLayerElement tree) {
+    static void printtree(PrintStream out, DependencyLayerElement tree) {
         DependencyTreeTest.printtree(out, tree, new BitSet(256), 0, new HashSet<>());
     }
 
@@ -151,7 +135,7 @@ public class DependencyTreeTest {
 
         assertTreeEquals(new GAV("org.stianloader.picoresolve-tests", "test-project-a", MavenVersion.parse("1.1.0")),
                 "virtual-node:virtual-node:null:jar:\n"
-                + "\\- org.stianloader.picoresolve-tests:test-project-a:null:pom:1.1.0\n"
+                + "\\- org.stianloader.picoresolve-tests:test-project-a:null:jar:1.1.0\n"
                 + "   +- org.ow2.asm:asm-util:null:jar:9.10.1\n"
                 + "   |  +- org.ow2.asm:asm:null:jar:9.10\n"
                 + "   |  +- org.ow2.asm:asm-tree:null:jar:9.10.1\n"
@@ -162,7 +146,7 @@ public class DependencyTreeTest {
 
         assertTreeEquals(new GAV("org.stianloader.picoresolve-tests", "test-project-a", MavenVersion.parse("1.1.1")),
                 "virtual-node:virtual-node:null:jar:\n"
-                + "\\- org.stianloader.picoresolve-tests:test-project-a:null:pom:1.1.1\n"
+                + "\\- org.stianloader.picoresolve-tests:test-project-a:null:jar:1.1.1\n"
                 + "   +- org.ow2.asm:asm:null:jar:9.10\n"
                 + "   \\- org.ow2.asm:asm-util:null:jar:9.10.1\n"
                 + "      +- org.ow2.asm:asm:null:jar:9.10\n"
@@ -173,7 +157,7 @@ public class DependencyTreeTest {
 
         assertTreeEquals(new GAV("org.stianloader.picoresolve-tests", "test-project-a", MavenVersion.parse("1.2.0")),
                 "virtual-node:virtual-node:null:jar:\n"
-                + "\\- org.stianloader.picoresolve-tests:test-project-a:null:pom:1.2.0\n"
+                + "\\- org.stianloader.picoresolve-tests:test-project-a:null:jar:1.2.0\n"
                 + "   +- org.ow2.asm:asm:null:jar:9.10.1\n"
                 + "   \\- org.ow2.asm:asm-util:null:jar:9.10.1\n"
                 + "      +- org.ow2.asm:asm:null:jar:9.10.1\n"
@@ -184,7 +168,7 @@ public class DependencyTreeTest {
 
         assertTreeEquals(new GAV("org.stianloader.picoresolve-tests", "test-project-a", MavenVersion.parse("1.2.1")),
                 "virtual-node:virtual-node:null:jar:\n"
-                + "\\- org.stianloader.picoresolve-tests:test-project-a:null:pom:1.2.1\n"
+                + "\\- org.stianloader.picoresolve-tests:test-project-a:null:jar:1.2.1\n"
                 + "   +- org.ow2.asm:asm-util:null:jar:9.10.1\n"
                 + "   |  +- org.ow2.asm:asm:null:jar:9.10.1\n"
                 + "   |  +- org.ow2.asm:asm-tree:null:jar:9.10.1\n"
@@ -195,7 +179,7 @@ public class DependencyTreeTest {
 
         assertTreeEquals(new GAV("org.stianloader.picoresolve-tests", "test-project-a", MavenVersion.parse("1.2.2")),
                 "virtual-node:virtual-node:null:jar:\n"
-                + "\\- org.stianloader.picoresolve-tests:test-project-a:null:pom:1.2.2\n"
+                + "\\- org.stianloader.picoresolve-tests:test-project-a:null:jar:1.2.2\n"
                 + "   +- org.ow2.asm:asm-util:null:jar:9.9\n"
                 + "   |  +- org.ow2.asm:asm:null:jar:9.10.1\n"
                 + "   |  +- org.ow2.asm:asm-tree:null:jar:9.9\n"
@@ -206,7 +190,7 @@ public class DependencyTreeTest {
 
         assertTreeEquals(new GAV("org.stianloader.picoresolve-tests", "test-project-a", MavenVersion.parse("1.2.3")),
                 "virtual-node:virtual-node:null:jar:\n"
-                + "\\- org.stianloader.picoresolve-tests:test-project-a:null:pom:1.2.3\n"
+                + "\\- org.stianloader.picoresolve-tests:test-project-a:null:jar:1.2.3\n"
                 + "   +- org.ow2.asm:asm:null:jar:9.10.1\n"
                 + "   \\- org.ow2.asm:asm-util:null:jar:9.9\n"
                 + "      +- org.ow2.asm:asm:null:jar:9.10.1\n"
@@ -223,7 +207,7 @@ public class DependencyTreeTest {
 
         assertTreeEquals(new GAV("org.stianloader.picoresolve-tests", "test-project-a", MavenVersion.parse("1.3.0")),
                 "virtual-node:virtual-node:null:jar:\n"
-                + "\\- org.stianloader.picoresolve-tests:test-project-a:null:pom:1.3.0\n"
+                + "\\- org.stianloader.picoresolve-tests:test-project-a:null:jar:1.3.0\n"
                 + "   +- org.ow2.asm:asm-util:null:jar:9.9\n"
                 + "   |  +- org.ow2.asm:asm:null:jar:9.9\n"
                 + "   |  +- org.ow2.asm:asm-tree:null:jar:9.9\n"
@@ -234,7 +218,7 @@ public class DependencyTreeTest {
 
         assertTreeEquals(new GAV("org.stianloader.picoresolve-tests", "test-project-a", MavenVersion.parse("1.3.1")),
                 "virtual-node:virtual-node:null:jar:\n"
-                + "\\- org.stianloader.picoresolve-tests:test-project-a:null:pom:1.3.1\n"
+                + "\\- org.stianloader.picoresolve-tests:test-project-a:null:jar:1.3.1\n"
                 + "   +- org.ow2.asm:asm-analysis:null:jar:9.10.1\n"
                 + "   |  \\- org.ow2.asm:asm-tree:null:jar:9.10.1\n"
                 + "   |     \\- org.ow2.asm:asm:null:jar:9.9\n"

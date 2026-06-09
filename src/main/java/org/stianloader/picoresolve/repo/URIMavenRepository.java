@@ -33,8 +33,10 @@ public class URIMavenRepository implements MavenRepository {
     protected byte @NotNull[] getResource0(@NotNull String path) throws Exception {
         URI resolved = this.base.resolve(path);
         URLConnection connection = resolved.toURL().openConnection();
+
         if (connection instanceof HttpURLConnection) {
             HttpURLConnection httpUrlConn = (HttpURLConnection) connection;
+
             if ((httpUrlConn.getResponseCode() / 100) != 2) {
                 throw new IOException("Query for " + connection.getURL() + " returned with a response code of " + httpUrlConn.getResponseCode() + " (" + httpUrlConn.getResponseMessage() + ")");
             }
