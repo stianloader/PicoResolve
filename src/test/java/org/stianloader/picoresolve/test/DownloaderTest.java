@@ -20,26 +20,6 @@ import org.stianloader.picoresolve.version.MavenVersion;
 
 public class DownloaderTest {
     @Test
-    public void doTest() {
-        assertDoesNotThrow(() -> {
-            try {
-                MavenResolver resolver = new MavenResolver(Paths.get("testmvnlocal"))
-                        .addRepository(new URIMavenRepository("central", URI.create("https://repo1.maven.org/maven2/")))
-                        .addRepository(new URIMavenRepository("paper", URI.create("https://papermc.io/repo/repository/maven-public/")));
-
-                GAV paperGAV = new GAV("io.papermc.paper", "paper-api", MavenVersion.parse("1.18.1-R0.1-SNAPSHOT"));
-
-                RepositoryAttachedValue<Path> pathRAV = resolver.download(paperGAV, null, "jar", Runnable::run).get();
-                MavenRepository repo = pathRAV.getRepository();
-                System.out.println("Download success: " + (repo == null ? "unknown" : repo.getRepositoryId()) + ":" + pathRAV.getValue());
-            } catch (Throwable t) {
-                t.printStackTrace();
-                throw t;
-            }
-        });
-    }
-
-    @Test
     public void downloadSparkSnapshot() throws InterruptedException, ExecutionException {
         assertDoesNotThrow(() -> {
             MavenResolver resolver = new MavenResolver(Paths.get("testmvnlocal"))
