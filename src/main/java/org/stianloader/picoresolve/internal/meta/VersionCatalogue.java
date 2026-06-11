@@ -13,6 +13,7 @@ import javax.xml.parsers.ParserConfigurationException;
 
 import org.jetbrains.annotations.ApiStatus.Internal;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 import org.stianloader.picoresolve.internal.ConfusedResolverException;
 import org.stianloader.picoresolve.internal.XMLUtil;
 import org.stianloader.picoresolve.internal.XMLUtil.ChildElementIterable;
@@ -26,18 +27,26 @@ public class VersionCatalogue {
 
     @Internal
     public static class SnapshotVersion {
+        @Nullable
         private final String classifier;
+
+        @NotNull
         private final String extension;
+
+        @NotNull
         private final String lastUpdated;
+
+        @NotNull
         private final String version;
 
-        public SnapshotVersion(String extension, String classifier, String version, String lastUpdated) {
+        public SnapshotVersion(@NotNull String extension, @Nullable String classifier, @NotNull String version, @NotNull String lastUpdated) {
             this.extension = extension;
             this.classifier = classifier;
             this.version = version;
             this.lastUpdated = lastUpdated;
         }
 
+        @Nullable
         public String classifier() {
             return this.classifier;
         }
@@ -47,13 +56,15 @@ public class VersionCatalogue {
             if (obj instanceof SnapshotVersion) {
                 SnapshotVersion other = (SnapshotVersion) obj;
                 return this.extension.equals(other.extension)
-                        && this.classifier.equals(other.classifier)
+                        && Objects.equals(this.classifier, other.classifier)
                         && this.version.equals(other.version)
                         && this.lastUpdated.equals(other.lastUpdated);
             }
+
             return false;
         }
 
+        @NotNull
         public String extension() {
             return this.extension;
         }
@@ -63,10 +74,12 @@ public class VersionCatalogue {
             return Objects.hash(this.extension, this.classifier, this.version, this.lastUpdated);
         }
 
+        @NotNull
         public String lastUpdated() {
             return this.lastUpdated;
         }
 
+        @NotNull
         public String version() {
             return this.version;
         }
@@ -193,16 +206,12 @@ public class VersionCatalogue {
         // No-arguments constructor needed for the #merge method
     }
 
-    public VersionCatalogue(InputStream is) throws SAXException, IOException, ParserConfigurationException {
+    public VersionCatalogue(@NotNull InputStream is) throws SAXException, IOException, ParserConfigurationException {
         Document xmlDoc;
         {
             DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
             factory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
             xmlDoc = factory.newDocumentBuilder().parse(is);
-        }
-
-        if (xmlDoc == null) {
-            throw new NullPointerException("xmlDoc is null");
         }
 
         Element metadata = xmlDoc.getDocumentElement();
@@ -304,10 +313,11 @@ public class VersionCatalogue {
         if (snapshotVersions != null) {
             for (Element element : new ChildElementIterable(snapshotVersions)) {
                 if (element.getTagName().equalsIgnoreCase("snapshotVersion")) {
-                    String extension = XMLUtil.elementText(element, "extension");
-                    String lastUpdated = XMLUtil.elementText(element, "updated");
-                    String version = XMLUtil.elementText(element, "value");
+                    String extension = XMLUtil.requireElementText(element, "extension");
+                    String lastUpdated = XMLUtil.requireElementText(element, "updated");
+                    String version = XMLUtil.requireElementText(element, "value");
                     String classifier = XMLUtil.elementText(element, "classifier");
+
                     this.snapshotVersions.add(new SnapshotVersion(extension, classifier, version, lastUpdated));
                 }
             }

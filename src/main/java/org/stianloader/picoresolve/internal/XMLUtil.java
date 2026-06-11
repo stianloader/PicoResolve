@@ -85,9 +85,11 @@ public class XMLUtil {
     @Nullable
     public static String elementText(@NotNull Element node, @NotNull String name) {
         Element e = XMLUtil.optElement(node, name);
+
         if (e == null) {
             return null;
         }
+
         return e.getTextContent();
     }
 
@@ -119,9 +121,23 @@ public class XMLUtil {
     @NotNull
     public static Element reqElement(@NotNull Element parentNode, @NotNull String name) {
         Element e = XMLUtil.optElement(parentNode, name);
+
         if (e == null) {
             throw new NoSuchElementException("No element tagged " + name + " for node " + parentNode.getBaseURI());
         }
+
         return e;
+    }
+
+    @NotNull
+    public static String requireElementText(@NotNull Element node, @NotNull String name) {
+        Element e = XMLUtil.reqElement(node, name);
+        String text = e.getTextContent();
+
+        if (text == null) {
+            throw new IllegalStateException("The element '" + e + "' has no text content!");
+        }
+
+        return text;
     }
 }

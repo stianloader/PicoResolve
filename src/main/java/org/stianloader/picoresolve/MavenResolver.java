@@ -219,24 +219,27 @@ public class MavenResolver {
                     continue;
                 }
             }
+
             merged = VersionCatalogue.merge(catalogues);
+
             for (SnapshotVersion snapshot : merged.snapshotVersions) {
                 if (!snapshot.extension().equals(extension)) {
                     continue;
-                }
-                if (snapshot.classifier() != null && !snapshot.classifier().equals(classifier)) {
+                } else if (!Objects.equals(snapshot.classifier(), classifier)) {
                     continue;
                 }
-                if (snapshot.classifier() == null && classifier != null) {
-                    continue;
-                }
+
                 String path = basePath + gav.artifact() + '-' + snapshot.version();
+
                 if (classifier != null) {
                     path += '-' + classifier;
                 }
+
                 path += '.' + extension;
+
                 return this.negotiator.resolveStandard(path, executor);
             }
+
             if (merged.fallbackSnapshotVersion != null) {
                 String path = basePath + gav.artifact() + '-' + merged.fallbackSnapshotVersion;
                 if (classifier != null) {
@@ -681,18 +684,21 @@ public class MavenResolver {
 
     private CompletableFuture<VersionCatalogue> getVersions(@NotNull String groupId, @NotNull String artifactId, @NotNull Executor executor) {
         return this.negotiator.resolveMavenMeta(groupId.replace('.', '/') + '/' + artifactId + "/maven-metadata.xml", executor).thenApply((item) -> {
-
             List<VersionCatalogue> catalogues = new ArrayList<>(item.size());
+
             for (RepositoryAttachedValue<Path> rav : item) {
                 VersionCatalogue catalogue;
+
                 try (InputStream is = Files.newInputStream(rav.getValue())) {
                     catalogue = new VersionCatalogue(is);
                 } catch (Exception e) {
-                    e.printStackTrace();
+                    this.logger.warn(VersionCatalogue.class, "Unable to read version catalogue from path {} resolved from repo {}.", rav.getValue(), rav.getRepository(), e);
                     continue;
                 }
+
                 catalogues.add(catalogue);
             }
+
             return VersionCatalogue.merge(catalogues);
         });
     }
