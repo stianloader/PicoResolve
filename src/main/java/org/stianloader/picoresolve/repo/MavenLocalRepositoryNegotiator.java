@@ -90,16 +90,10 @@ public class MavenLocalRepositoryNegotiator implements RepositoryNegotiatior {
         }
 
         List<CompletableFuture<RepositoryAttachedValue<Path>>> futures = new ArrayList<>();
+        Path mvnLocalMeta = parentDirectory.resolve("maven-metadata-local.xml");
 
-        if (!Files.exists(parentDirectory)) {
-            try {
-                Files.createDirectories(parentDirectory);
-            } catch (IOException ignored) { }
-        } else {
-            Path mvnLocalMeta = parentDirectory.resolve("maven-metadata-local.xml");
-            if (Files.exists(mvnLocalMeta)) {
-                futures.add(CompletableFuture.completedFuture(new RepositoryAttachedValue<>(null, mvnLocalMeta)));
-            }
+        if (Files.exists(mvnLocalMeta)) {
+            futures.add(CompletableFuture.completedFuture(new RepositoryAttachedValue<>(null, mvnLocalMeta)));
         }
 
         ResolverMetaStatus resolverStatus = ResolverMetaStatus.tryParse(resolverProperties);
@@ -117,6 +111,7 @@ public class MavenLocalRepositoryNegotiator implements RepositoryNegotiatior {
                     continue;
                 }
             }
+
             // This future downloads from the remote repository and updates the error timestamp
             // if it errors while no caches are present.
             CompletableFuture<RepositoryAttachedValue<byte[]>> fetchFuture = ConcurrencyUtil.exceptionally(
@@ -131,12 +126,21 @@ public class MavenLocalRepositoryNegotiator implements RepositoryNegotiatior {
                         resolverStatus.updateEntryErrored(remote.getRepositoryId(), ex.toString(), System.currentTimeMillis());
                         return null;
                     });
+
             // This future writes the raw bytes fetched from the remote to disk. It then returns the path the bytes were written to.
             CompletableFuture<RepositoryAttachedValue<Path>> future = fetchFuture.thenApply((rav) -> {
                 resolverStatus.updateEntrySuccess(remote.getRepositoryId(), System.currentTimeMillis());
-                write(rav.getValue(), localFile);
+
+                try {
+                    Files.createDirectories(parentDirectory);
+                } catch (IOException e) {
+                    throw new UncheckedIOException(e);
+                }
+
+                this.write(rav.getValue(), localFile);
                 return new RepositoryAttachedValue<>(rav.getRepository(), localFile);
             });
+
             // This future will use pre-existing caches should a download not be possible.
             // Of course if there are no caches, it will still fail exceptionally.
             future = ConcurrencyUtil.exceptionally(future, (ex) -> {
@@ -154,13 +158,15 @@ public class MavenLocalRepositoryNegotiator implements RepositoryNegotiatior {
         // This is a rarer usecase, but one usecase is for example stianloader's nightly-paperpusher where such a repository
         // needs to be managed.
         Path directMetadata = parentDirectory.resolve("maven-metadata.xml");
+
         if (Files.exists(directMetadata)) {
             futures.add(CompletableFuture.completedFuture(new RepositoryAttachedValue<>(null, directMetadata)));
         }
 
         CompletableFuture<List<RepositoryAttachedValue<Path>>> combined;
+
         if (futures.isEmpty()) {
-            combined = JavaInterop.failedFuture(new IllegalStateException("RepositoryNegotiator has exhausted all available repositories").fillInStackTrace());
+            combined = JavaInterop.failedFuture(new IllegalStateException("The requested resource '" + path + "' does not exist: All registered remote repositories have been unable to download the resource within their update intervall; re-resolution will not be attempted.").fillInStackTrace());
         } else {
             combined = new StronglyMultiCompletableFuture<>(futures);
         }
@@ -169,8 +175,8 @@ public class MavenLocalRepositoryNegotiator implements RepositoryNegotiatior {
             combined = combined.thenApply((value) -> {
                 try {
                     resolverStatus.write(resolverProperties);
-                } catch (Throwable ignored) {
-                }
+                } catch (Throwable ignored) { }
+
                 return value;
             });
         }
@@ -184,6 +190,9 @@ public class MavenLocalRepositoryNegotiator implements RepositoryNegotiatior {
         Path localFile = this.mavenLocal.resolve(path);
         Path lastUpdateFile = this.mavenLocal.resolve(path + ".lastUpdated");
         Path remoteRepos = localFile.resolveSibling("_remote.repositories");
+        Path parentDir = localFile.getParent();
+
+        assert parentDir != null; // Not possible given that we know that 'mavenLocal' is not null.
 
         boolean localFilePresent = Files.exists(localFile);
 
@@ -193,12 +202,6 @@ public class MavenLocalRepositoryNegotiator implements RepositoryNegotiatior {
         if (localFilePresent && !sourceRepo.isPresent()) {
             // Maven local
             return CompletableFuture.completedFuture(new RepositoryAttachedValue<>(null, localFile));
-        }
-        if (!localFilePresent && Files.notExists(localFile.getParent())) {
-            try {
-                Files.createDirectories(localFile.getParent());
-            } catch (IOException ignored) {
-            }
         }
 
         LastUpdatedFile lastUpdated = LastUpdatedFile.tryParse(lastUpdateFile);
@@ -284,6 +287,12 @@ public class MavenLocalRepositoryNegotiator implements RepositoryNegotiatior {
         }
 
         CompletableFuture<RepositoryAttachedValue<Path>> ret = ConcurrencyUtil.exceptionally(combined.thenApply((rav) -> {
+            try {
+                Files.createDirectories(parentDir);
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            }
+
             this.write(rav.getValue(), localFile);
             MavenRepository originRepository = rav.getRepository();
 
@@ -324,20 +333,21 @@ public class MavenLocalRepositoryNegotiator implements RepositoryNegotiatior {
 
     @Override
     @NotNull
-    @Contract(mutates = "this", pure = false, value = "-> this")
+    @Contract(mutates = "this", pure = false, value = "_ -> this")
     public MavenLocalRepositoryNegotiator setWriteCacheMetadata(boolean writeMetadata) {
         this.writeMetadata = writeMetadata;
         return this;
     }
 
-    protected void write(byte[] data, Path to) {
+    protected void write(byte @NotNull[] data, @NotNull Path to) {
         FileLock fileLock = null;
+
         try {
             Path parts = to.resolveSibling(to.getFileName().toString() + ".part");
             Path lock = to.resolveSibling(to.getFileName().toString() + ".part.lock");
-
             FileChannel lockChannel = FileChannel.open(lock, StandardOpenOption.WRITE, StandardOpenOption.CREATE, StandardOpenOption.DELETE_ON_CLOSE);
             long idleTime = 0L;
+
             while ((fileLock = lockChannel.tryLock()) == null) {
                 try {
                     Thread.sleep(10L);
@@ -350,7 +360,6 @@ public class MavenLocalRepositoryNegotiator implements RepositoryNegotiatior {
 
             Files.write(parts, data, StandardOpenOption.CREATE_NEW);
             Files.move(parts, to, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-
             fileLock.release();
             fileLock.acquiredBy().close();
         } catch (IOException e) {
@@ -360,8 +369,7 @@ public class MavenLocalRepositoryNegotiator implements RepositoryNegotiatior {
                 try {
                     fileLock.release();
                     fileLock.acquiredBy().close();
-                } catch (IOException ignored) {
-                }
+                } catch (IOException ignored) { }
             }
         }
     }

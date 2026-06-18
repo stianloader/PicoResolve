@@ -113,7 +113,7 @@ public class MavenResolver {
         if (gav.version().getOriginText().toLowerCase(Locale.ROOT).endsWith("-snapshot")) {
             resource = this.downloadSnapshot(gav, classifier, extension, executor);
         } else {
-            resource = ConcurrencyUtil.configureFallback(downloadSimple(gav, classifier, extension, executor), () -> {
+            resource = ConcurrencyUtil.configureFallback(this.downloadSimple(gav, classifier, extension, executor), () -> {
                 return this.downloadSnapshot(gav, classifier, extension, executor);
             });
         }
@@ -666,6 +666,7 @@ public class MavenResolver {
         }
     }
 
+    @NotNull
     public CompletableFuture<Map.Entry<@NotNull GAV, RepositoryAttachedValue<Path>>> download(@NotNull String group, @NotNull String artifact, @NotNull VersionRange versionRange, @Nullable String classifier, @NotNull String extension, @NotNull Executor executor) {
         return this.getVersions(group, artifact, executor).thenCompose((catalogue)-> {
             MavenVersion selected = versionRange.selectFrom(catalogue.releaseVersions, catalogue.releaseVersion, VersionSelectionPreference.DECLARATION_ORDER);

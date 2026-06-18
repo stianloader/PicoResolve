@@ -44,4 +44,40 @@ public class FileDeleter {
             }
         });
     }
+
+    public static void deleteFileExtensions(@NotNull Path path, @NotNull String extension) throws IOException {
+        if (Files.notExists(path)) {
+            return;
+        }
+
+        Files.walkFileTree(path, new FileVisitor<Path>() {
+            @Override
+            public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
+                return FileVisitResult.CONTINUE;
+            }
+
+            @Override
+            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+                if (file.getFileName().toString().endsWith(extension)) {
+                    Files.delete(file);
+                }
+
+                return FileVisitResult.CONTINUE;
+            }
+
+            @Override
+            public FileVisitResult visitFileFailed(Path file, IOException exc) throws IOException {
+                throw exc;
+            }
+
+            @Override
+            public FileVisitResult postVisitDirectory(Path dir, IOException exc) throws IOException {
+                if (exc != null) {
+                    throw exc;
+                }
+
+                return FileVisitResult.CONTINUE;
+            }
+        });
+    }
 }

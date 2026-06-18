@@ -2,6 +2,7 @@ package org.stianloader.picoresolve.test;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -14,23 +15,21 @@ import java.nio.file.Paths;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 
-import org.junit.jupiter.api.MethodOrderer;
-import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.TestMethodOrder;
 import org.stianloader.picoresolve.GAV;
 import org.stianloader.picoresolve.MavenResolver;
+import org.stianloader.picoresolve.repo.MavenLocalRepositoryNegotiator;
 import org.stianloader.picoresolve.repo.MavenRepository;
 import org.stianloader.picoresolve.repo.RepositoryAttachedValue;
 import org.stianloader.picoresolve.repo.URIMavenRepository;
 import org.stianloader.picoresolve.test.util.FileDeleter;
 import org.stianloader.picoresolve.test.util.TestResourceRepository;
 import org.stianloader.picoresolve.version.MavenVersion;
+import org.stianloader.picoresolve.version.VersionRange;
 
-@TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 public class LocalCacheTest {
+
     @Test
-    @Order(value = 1)
     public void downloadArtifact() throws InterruptedException, ExecutionException, IOException {
         Path localRoot = Paths.get("testmvnlocal");
         Path gaRoot = localRoot.resolve("org/stianloader/picoresolve");
@@ -99,5 +98,47 @@ public class LocalCacheTest {
             assertNull(pathRAV2Unrelated.getRepository());
             assertTrue(pathRAV2Unrelated.getValue().endsWith(gavceRelativePath));
         });
+    }
+
+    @Test
+    public void noWriteMetadata() throws InterruptedException, ExecutionException, IOException {
+        Path localRoot = Paths.get("testmvnlocal");
+        Path gaRoot = localRoot.resolve("org/stianloader/nometatest");
+
+        FileDeleter.deleteDir(gaRoot);
+
+        MavenResolver resolver = new MavenResolver(new MavenLocalRepositoryNegotiator(localRoot).setWriteCacheMetadata(false));
+
+        CompletableFuture<?> cfUseMeta = resolver.download("org.stianloader", "nometatest", VersionRange.RELEASE, null, "jar", Runnable::run);
+
+        assertTrue(cfUseMeta.isDone());
+        assertTrue(cfUseMeta.isCompletedExceptionally());
+        assertFalse(Files.exists(gaRoot));
+
+        try {
+            cfUseMeta.get();
+            throw new AssertionError("Unreachable code");
+        } catch (ExecutionException ce) {
+            Throwable cause = ce.getCause();
+            assertNotNull(cause);
+            // Test that error reporting is done properly
+            assertTrue(cause.getMessage().contains("'org/stianloader/nometatest/maven-metadata.xml' does not exist: All registered remote repositories have been unable to download the resource within their update intervall"));
+        }
+
+        CompletableFuture<?> cfUseDirect = resolver.download(new GAV("org.stianloader", "nometatest", MavenVersion.parse("1.0.0")), null, "jar", Runnable::run);
+
+        assertTrue(cfUseDirect.isDone());
+        assertTrue(cfUseDirect.isCompletedExceptionally());
+        assertFalse(Files.exists(gaRoot));
+
+        try {
+            cfUseDirect.get();
+            throw new AssertionError("Unreachable code");
+        } catch (ExecutionException ce) {
+            Throwable cause = ce.getCause();
+            assertNotNull(cause);
+            // Test that error reporting is done properly
+            assertTrue(cause.getMessage().contains("'org/stianloader/nometatest/1.0.0/nometatest-1.0.0.jar' is not present in the local maven repository"));
+        }
     }
 }
