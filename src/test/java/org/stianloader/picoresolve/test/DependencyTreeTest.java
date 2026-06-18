@@ -21,6 +21,8 @@ import org.stianloader.picoresolve.DependencyLayer.DependencyLayerElement;
 import org.stianloader.picoresolve.GAV;
 import org.stianloader.picoresolve.MavenResolver;
 import org.stianloader.picoresolve.repo.URIMavenRepository;
+import org.stianloader.picoresolve.test.util.NOPLogger;
+import org.stianloader.picoresolve.test.util.TestResourceRepository;
 import org.stianloader.picoresolve.version.MavenVersion;
 
 public class DependencyTreeTest {

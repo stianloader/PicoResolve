@@ -78,9 +78,11 @@ public class MavenLocalRepositoryNegotiator implements RepositoryNegotiatior {
     @NotNull
     public CompletableFuture<List<RepositoryAttachedValue<Path>>> resolveMavenMeta(@NotNull String path, @NotNull Executor executor) {
         Path parentDirectory = this.mavenLocal.resolve(path).getParent();
+
         if (parentDirectory == null) {
             throw new IllegalStateException("\"path\" might only consist of a slash!");
         }
+
         Path resolverProperties = parentDirectory.resolve("resolver-status.properties");
 
         if (!path.endsWith("/maven-metadata.xml")) {
@@ -92,8 +94,7 @@ public class MavenLocalRepositoryNegotiator implements RepositoryNegotiatior {
         if (!Files.exists(parentDirectory)) {
             try {
                 Files.createDirectories(parentDirectory);
-            } catch (IOException ignored) {
-            }
+            } catch (IOException ignored) { }
         } else {
             Path mvnLocalMeta = parentDirectory.resolve("maven-metadata-local.xml");
             if (Files.exists(mvnLocalMeta)) {
@@ -180,7 +181,6 @@ public class MavenLocalRepositoryNegotiator implements RepositoryNegotiatior {
     @Override
     @NotNull
     public CompletableFuture<RepositoryAttachedValue<Path>> resolveStandard(@NotNull String path, @NotNull Executor executor) {
-
         Path localFile = this.mavenLocal.resolve(path);
         Path lastUpdateFile = this.mavenLocal.resolve(path + ".lastUpdated");
         Path remoteRepos = localFile.resolveSibling("_remote.repositories");
@@ -207,6 +207,7 @@ public class MavenLocalRepositoryNegotiator implements RepositoryNegotiatior {
 
         for (MavenRepository remote : this.remoteRepositories) {
             Long lastFetch = lastUpdated.getLastFetchTime(remote.getPlaintextURL());
+
             if (sourceRepo.isPresent() && remote.getRepositoryId().equals(sourceRepo.get())) {
                 if (lastFetch == null) {
                     // Either this is not actually the origin repository or the maven
@@ -223,6 +224,7 @@ public class MavenLocalRepositoryNegotiator implements RepositoryNegotiatior {
                     break;
                 }
             }
+
             if (!lastUpdated.hasErrored(remote.getPlaintextURL())) {
                 if (lastFetch != null && (lastFetch + remote.getUpdateIntervall()) > System.currentTimeMillis()) {
                     return CompletableFuture.completedFuture(new RepositoryAttachedValue<>(remote, localFile));
@@ -230,30 +232,51 @@ public class MavenLocalRepositoryNegotiator implements RepositoryNegotiatior {
             } else if (lastFetch != null && (lastFetch + remote.getUpdateIntervall()) > System.currentTimeMillis()) {
                 continue;
             }
+
             candidateRepositories.add(remote);
         }
 
-        if (candidateRepositories.isEmpty() && localFilePresent) {
-            return CompletableFuture.completedFuture(new RepositoryAttachedValue<>(null, localFile));
+        if (candidateRepositories.isEmpty()) {
+            String errorMessage;
+
+            if (localFilePresent) {
+                errorMessage = "The requested resource '"
+                        + path
+                        + "' is present in the local maven repository, but was resolved from repository '"
+                        + sourceRepo.get()
+                        + "', which is not a known repository in the current resolution context. All registered remote repositories have been unable to download the resource within their update intervall.";
+            } else {
+                errorMessage = "The requested resource '"
+                        + path
+                        + "' is not present in the local maven repository. All registered remote repositories have been unable to download the resource within their update intervall.";
+            }
+
+            return JavaInterop.failedFuture(new IOException(errorMessage).fillInStackTrace());
         }
 
         List<CompletableFuture<RepositoryAttachedValue<byte[]>>> futures = new ArrayList<>();
+
         for (MavenRepository remote : candidateRepositories) {
             CompletableFuture<RepositoryAttachedValue<byte[]>> future = remote.getResource(path, executor);
+
             future.exceptionally((ex) -> {
                 lastUpdated.updateEntryErrored(remote.getPlaintextURL(), ex.toString(), System.currentTimeMillis());
                 return null;
             });
+
             future.thenRun(() -> {
                 lastUpdated.updateEntrySuccess(remote.getPlaintextURL(), System.currentTimeMillis());
             });
+
             futures.add(future);
+
             if (future.isDone() && !future.isCompletedExceptionally()) {
                 break; // Let's note waste too much CPU time when running with a synchronous executor
             }
         }
 
         CompletableFuture<RepositoryAttachedValue<byte[]>> combined;
+
         if (!futures.isEmpty()) {
             combined = new MultiCompletableFuture<>(futures);
         } else {
@@ -261,21 +284,32 @@ public class MavenLocalRepositoryNegotiator implements RepositoryNegotiatior {
         }
 
         CompletableFuture<RepositoryAttachedValue<Path>> ret = ConcurrencyUtil.exceptionally(combined.thenApply((rav) -> {
-            write(rav.getValue(), localFile);
+            this.write(rav.getValue(), localFile);
             MavenRepository originRepository = rav.getRepository();
+
             if (originRepository != null) {
                 repoProps.setSourceRepository(localFile.getFileName().toString(), originRepository.getRepositoryId());
+
                 if (this.writeMetadata) {
                     repoProps.tryWrite(remoteRepos);
                 }
             }
+
             return new RepositoryAttachedValue<>(originRepository, localFile);
         }), (ex) -> {
-            if (Files.exists(localFile)) {
-                return new RepositoryAttachedValue<>(null, localFile);
+            if (localFilePresent) {
+                String errorMessage = "The requested resource '"
+                        + path
+                        + "' is present in the local maven repository, but was resolved from repository '"
+                        + sourceRepo.get()
+                        + "', which is not a known repository in the current resolution context. All registered remote repositories have been unable to download the resource within their update intervall, or have otherwise failed to resolve the requested resource.";
+
+                throw new UncheckedIOException((IOException) new IOException(errorMessage).initCause(ex));
             }
+
             return null;
         });
+
         if (this.writeMetadata) {
             ret.thenRun(() -> {
                 try {
@@ -284,6 +318,7 @@ public class MavenLocalRepositoryNegotiator implements RepositoryNegotiatior {
                 }
             });
         }
+
         return ret;
     }
 

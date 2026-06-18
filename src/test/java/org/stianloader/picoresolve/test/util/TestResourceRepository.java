@@ -1,4 +1,4 @@
-package org.stianloader.picoresolve.test;
+package org.stianloader.picoresolve.test.util;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -11,7 +11,7 @@ import org.stianloader.picoresolve.internal.JavaInterop;
 import org.stianloader.picoresolve.repo.MavenRepository;
 import org.stianloader.picoresolve.repo.RepositoryAttachedValue;
 
-final class TestResourceRepository implements MavenRepository {
+public final class TestResourceRepository implements MavenRepository {
     @Override
     @NotNull
     public CompletableFuture<RepositoryAttachedValue<byte[]>> getResource(@NotNull String path, @NotNull Executor executor) {

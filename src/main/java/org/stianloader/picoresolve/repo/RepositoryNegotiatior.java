@@ -24,9 +24,10 @@ public interface RepositoryNegotiatior {
      * in any repository known to this instance of the {@link RepositoryNegotiatior} and if the file was not
      * cached locally beforehand.</li>
      * <li>The {@link CompletableFuture} CAN complete exceptionally if the requested file does not exist in
-     * the repositories but was cached locally previously.</li>
-     * <li>However it SHOULD complete normally if the file was cached recently - that is before the repository
-     * refresh interval.</li>
+     * the repositories but was cached locally previously (Maven 3 behaviour, Maven 4.0.0-rc.5 would complete
+     * normally here, but that might be a bug on Maven's side).</li>
+     * <li>However it SHOULD complete normally if the file was cached recently by a repository known to this negotiator
+     * - that is before the repository refresh interval, irrespective of other factors.</li>
      * <li>Normal completion MUST occur if any repository contains the file. (It may complete exceptionally if
      * needed file IO is not possible for the caching, but that is an ignored edge-case scenario here)</li>
      * <li>Normal completion SHOULD occur if the file exists locally at the right path, even though it was never

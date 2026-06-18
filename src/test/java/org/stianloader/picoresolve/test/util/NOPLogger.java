@@ -1,4 +1,4 @@
-package org.stianloader.picoresolve.test;
+package org.stianloader.picoresolve.test.util;
 
 import org.stianloader.picoresolve.logging.LoggingAdapter;
 
